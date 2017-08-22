@@ -61,6 +61,14 @@ inline int Max(int a, int b)
 	return a * (a >= b) + b * (b > a);
 }
 
+/// return min(a,b)
+inline int Distance(int a, int b, int gridSize)
+{
+	int xDiff = a % gridSize - b % gridSize;
+	int yDiff = a / gridSize - b / gridSize;
+	return xDiff * xDiff + yDiff * yDiff;
+}
+
 /// return the minimum pair min(first), min(second)
 inline std::pair<int, int> Min(std::pair<int, int> & a, std::pair<int, int> & b)
 {
@@ -680,7 +688,7 @@ int nxnGrid::MoveFromLocation(state_t & state, std::pair<int, int>& goFrom) cons
 int nxnGrid::MoveToLocationIMP(state_t & state, std::pair<int, int> & goTo) const
 {
 	int selfLocation = state[0];
-
+	int goToLocation = goTo.first + goTo.second * m_gridSize;
 	int move = selfLocation;
 
 	int xDiff = goTo.first - selfLocation % m_gridSize;
@@ -692,12 +700,30 @@ int nxnGrid::MoveToLocationIMP(state_t & state, std::pair<int, int> & goTo) cons
 	int changeToInsertY = yDiff != 0 ? (yDiff / absYDiff) * m_gridSize : 0;
 
 	// insert to move the best valid option
-	if (ValidLocation(state, selfLocation + changeToInsertX))
-		move += changeToInsertX;
-	if (ValidLocation(state, selfLocation + changeToInsertY))
-		move += changeToInsertY;
+	move += changeToInsertX + changeToInsertY;
+	if (ValidLocation(state, move))
+		return move;
 
-	return move;
+	int secondMove;
+	changeToInsertX += selfLocation;
+	changeToInsertY += selfLocation;
+	if (Distance(goToLocation, changeToInsertX, m_gridSize) > Distance(goToLocation, changeToInsertY, m_gridSize))
+	{
+		move = changeToInsertY;
+		secondMove = changeToInsertX;
+	}
+	else
+	{
+		move = changeToInsertX;
+		secondMove = changeToInsertY;
+	}
+
+	if (ValidLocation(state, move))
+		return move;
+	else if (ValidLocation(state, secondMove))
+		return secondMove;
+
+	return selfLocation;
 }
 
 
