@@ -3,7 +3,7 @@
 
 #include "ObjInGrid.h"
 #include "Move_Properties.h"
-#include "Point.h"
+#include "Coordinate.h"
 
 ///class of movable objects in grid for pomdp writer. can be use as non-involved objects
 class Movable_Obj :
@@ -11,7 +11,7 @@ class Movable_Obj :
 {
 public:
 	explicit Movable_Obj() = default;
-	explicit Movable_Obj(Point& location, Move_Properties& movement);
+	explicit Movable_Obj(Coordinate& location, Move_Properties& movement);
 	virtual ~Movable_Obj() = default;
 	Movable_Obj(const Movable_Obj &) = default;
 	Movable_Obj& operator=(const Movable_Obj&) = default;

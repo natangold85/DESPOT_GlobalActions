@@ -3,7 +3,7 @@
 #include <vector>
 #include <map>
 #include "../src/MapOfPomdp.h"
-#include "Coordinate.h"
+#include "../src/Coordinate.h"
 
 class DataForObjects
 {
@@ -40,7 +40,7 @@ public:
 	///  ctor to read and use exist lut
 	explicit StateActionLUT(int despotGridSize);
 	/// ctor to create a new lut
-	explicit StateActionLUT(std::vector<intVec> & keys, int onlineGridSize, LUT_TYPE type);
+	explicit StateActionLUT(std::vector<intVec> & keys, int onlineGridSize, LUT_TYPE type = SINGLE);
 	~StateActionLUT() = default;
 
 	/// create lut using offline data(stateReward) with offline grid size(gridSize) and given data on objects (dataForObjects - ranges are offline ranges)
@@ -62,6 +62,8 @@ public:
 	friend std::ofstream& operator<<(std::ofstream& out, const StateActionLUT& map);
 	/// read map from file
 	friend std::ifstream& operator>>(std::ifstream& in, StateActionLUT& map);
+
+	int GetSarsopGridSize(int idxSarsop) const { return m_objectsNum[idxSarsop][GRIDSIZE]; };
 
 private:
 	int m_despotGridSize;

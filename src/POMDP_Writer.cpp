@@ -104,23 +104,23 @@ void POMDP_Writer::AddObj(ObjInGrid&& obj)
 	m_shelterVec.emplace_back(std::forward<ObjInGrid>(obj));
 }
 
-void POMDP_Writer::SetLocationSelf(Point & newLocation)
+void POMDP_Writer::SetLocationSelf(Coordinate & newLocation)
 {
 	m_self.SetLocation( newLocation );
 }
 
-void POMDP_Writer::SetLocationEnemy(Point & newLocation, int idxObj)
+void POMDP_Writer::SetLocationEnemy(Coordinate & newLocation, int idxObj)
 {
 
 	m_enemyVec[idxObj - 1].SetLocation(newLocation);
 }
 
-void POMDP_Writer::SetLocationNonInv(Point & newLocation, int idxObj)
+void POMDP_Writer::SetLocationNonInv(Coordinate & newLocation, int idxObj)
 {
 	m_nonInvolvedVec[idxObj - 1 - m_enemyVec.size()].SetLocation(newLocation);
 }
 
-void POMDP_Writer::SetLocationShelter(Point & newLocation, int idxObj)
+void POMDP_Writer::SetLocationShelter(Coordinate & newLocation, int idxObj)
 {
 	m_shelterVec[idxObj - 1 - m_enemyVec.size() - m_nonInvolvedVec.size()].SetLocation(newLocation);
 }
@@ -156,13 +156,13 @@ void POMDP_Writer::CommentsAndInitLines(FILE *fptr)
 	// add comments
 	buffer += "# pomdp file:\n";
 	buffer += "# grid size: " + std::to_string(m_gridSize) + "  target idx: " + std::to_string(m_targetIdx);
-	buffer += "\n# SELF:\n# self initial location: " + std::to_string(m_self.GetLocation().GetIdx(m_gridSize)) + " std = " + std::to_string(m_self.GetLocation().GetStd());
+	buffer += "\n# SELF:\n# self initial location: " + std::to_string(m_self.GetLocation().GetIdx(m_gridSize));
 	buffer += "\n# with atack range of " + std::to_string(m_self.GetRange()) + " (p = " + std::to_string(m_self.GetPHit()) + ")";
 	buffer += "\n# observation range of " + std::to_string(m_self.GetRangeObs()) + " (p = " + std::to_string(m_self.GetPObs()) + ")";
 	buffer += "\n\n# ENEMIES:";
 	for (auto v : m_enemyVec)
 	{
-		buffer += "\n\n# enemy initial location: " + std::to_string(v.GetLocation().GetIdx(m_gridSize)) + " std = " + std::to_string(v.GetLocation().GetStd());
+		buffer += "\n\n# enemy initial location: " + std::to_string(v.GetLocation().GetIdx(m_gridSize));
 		buffer += "\n# p(toward target) = " + std::to_string(v.GetMovement().GetToward()) + " p(stay) = " + std::to_string(v.GetMovement().GetStay());
 		buffer += "\n# with atack range of " + std::to_string(m_self.GetRange()) + " (p = " + std::to_string(m_self.GetPHit()) + ") ";
 	}
@@ -170,7 +170,7 @@ void POMDP_Writer::CommentsAndInitLines(FILE *fptr)
 	buffer += "\n\n# NON-INVOLVED:";
 	for (auto v : m_nonInvolvedVec)
 	{
-		buffer += "\n\n# non- involved initial location: " + std::to_string(v.GetLocation().GetIdx(m_gridSize)) + " std = " + std::to_string(v.GetLocation().GetStd());
+		buffer += "\n\n# non- involved initial location: " + std::to_string(v.GetLocation().GetIdx(m_gridSize));
 		buffer += "\n# p(toward target) = " + std::to_string(v.GetMovement().GetToward()) + " p(stay) = " + std::to_string(v.GetMovement().GetStay());
 	}
 

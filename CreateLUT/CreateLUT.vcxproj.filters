@@ -48,7 +48,7 @@
     <ClCompile Include="StateActionLUT.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Coordinate.cpp">
+    <ClCompile Include="..\src\Coordinate.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -83,7 +83,7 @@
     <ClInclude Include="StateActionLUT.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Coordinate.h">
+    <ClInclude Include="..\src\Coordinate.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

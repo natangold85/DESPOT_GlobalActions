@@ -67,6 +67,7 @@
   <ItemGroup>
     <ClCompile Include="..\src\Attacks.cpp" />
     <ClCompile Include="..\src\Attack_Obj.cpp" />
+    <ClCompile Include="..\src\Coordinate.cpp" />
     <ClCompile Include="..\src\MapOfPomdp.cpp" />
     <ClCompile Include="..\src\Movable_Obj.cpp" />
     <ClCompile Include="..\src\Move_Properties.cpp" />
@@ -74,13 +75,13 @@
     <ClCompile Include="..\src\Point.cpp" />
     <ClCompile Include="..\src\POMDP_Writer.cpp" />
     <ClCompile Include="..\src\Self_Obj.cpp" />
-    <ClCompile Include="Coordinate.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="StateActionLUT.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\Attacks.h" />
     <ClInclude Include="..\src\Attack_Obj.h" />
+    <ClInclude Include="..\src\Coordinate.h" />
     <ClInclude Include="..\src\MapOfPomdp.h" />
     <ClInclude Include="..\src\Movable_Obj.h" />
     <ClInclude Include="..\src\Move_Properties.h" />
@@ -88,7 +89,6 @@
     <ClInclude Include="..\src\Point.h" />
     <ClInclude Include="..\src\POMDP_Writer.h" />
     <ClInclude Include="..\src\Self_Obj.h" />
-    <ClInclude Include="Coordinate.h" />
     <ClInclude Include="StateActionLUT.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

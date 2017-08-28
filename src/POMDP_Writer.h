@@ -66,10 +66,10 @@ public:
 
 	// change model functions
 
-	void SetLocationSelf(Point & newLocation);
-	void SetLocationEnemy(Point & newLocation, int idxObj);
-	void SetLocationNonInv(Point & newLocation, int idxObj);
-	void SetLocationShelter(Point & newLocation, int idxObj);
+	void SetLocationSelf(Coordinate & newLocation);
+	void SetLocationEnemy(Coordinate & newLocation, int idxObj);
+	void SetLocationNonInv(Coordinate & newLocation, int idxObj);
+	void SetLocationShelter(Coordinate & newLocation, int idxObj);
 	void SetTarget(int idx);
 	void SetGridSize(int gridSize);
 

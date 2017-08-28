@@ -1,22 +1,22 @@
 #pragma once
 #include <fstream>      // std::ofstream
 
-#include "Point.h"
+#include "Coordinate.h"
 
 /// a base class for objects in grid for pomdp project. can be used as shelter
 class ObjInGrid
 {
 public:
 	explicit ObjInGrid() = default;
-	explicit ObjInGrid(Point& location);
+	explicit ObjInGrid(Coordinate& location);
 	virtual ~ObjInGrid() = default;
 	ObjInGrid(const ObjInGrid&) = default;
 	ObjInGrid& operator=(const ObjInGrid&) = default;
 
 	/// Get location of object
-	const Point &GetLocation() const;
+	const Coordinate &GetLocation() const;
 	/// Set location of object
-	void SetLocation(Point &newLocation);
+	void SetLocation(Coordinate &newLocation);
 	
 	/// write object to file
 	friend std::ofstream& operator<<(std::ofstream& out, const ObjInGrid& obj);
@@ -24,7 +24,7 @@ public:
 	friend std::ifstream& operator>>(std::ifstream& in, ObjInGrid& obj);
 
 private:
-	Point m_location;
+	Coordinate m_location;
 };
 
 

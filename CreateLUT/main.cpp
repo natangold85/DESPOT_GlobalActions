@@ -3,7 +3,7 @@
 #include <algorithm>
 
 // lut file name
-const char * LUTFILENAME = "Min_AllLUT.bin";
+const char * LUTFILENAME = "3x3(ALL)_LUT.bin";
 // sarsop data file name
 const char * DATAFILENAME = "data.bin";
 
@@ -88,14 +88,6 @@ int Key2Key(int state_id, std::vector<int> & fromKey, std::vector<int> & toKey)
 		state.insert(state.begin() + 1 + toKey[1] + toKey[2], toKey[0]);
 
 	return StateActionLUT::State2Idx(state, toKey[0]);
-}
-
-void AddStateReward(std::map<int, double> & stateReward, std::vector<int> & keyCurrent, std::map<int, double> & sumStateReward)
-{
-	std::for_each(stateReward.begin(), stateReward.end(), [&](std::map<int, double>::const_reference itr)
-	{
-		sumStateReward[Key2Key(itr.first, keyCurrent, KEY)] += itr.second;
-	});
 }
 
 void CreateWeightedLUT(int gridSize, std::vector<std::vector<int>> keys, StateActionLUT::LUT_TYPE type)
@@ -218,7 +210,7 @@ int main()
 	keys.emplace_back(key_t{ 5,1,0,0 });
 	
 
-	CreateWeightedLUT(10, keys, StateActionLUT::LUT_TYPE::MIN);
+	CreateLUT(3);
 
 	std::cout << "press any key to exit";
 	std::cin >> c;

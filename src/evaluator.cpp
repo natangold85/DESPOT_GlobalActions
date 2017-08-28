@@ -159,8 +159,8 @@ bool Evaluator::RunStep(int step, int round) {
 
 	double offlineReward;
 	//int action = rand() % 4;
-	//int action = static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, offlineReward); // NATAN CHANGES SOLVER
-	int action = solver_->Search().action;
+	int action = static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, offlineReward); // NATAN CHANGES SOLVER
+	//int action = solver_->Search().action;
 
 	// NATAN CHANGES
 	Tree_Properties propSingleStep;
@@ -232,8 +232,8 @@ bool Evaluator::RunStep(int step, int round) {
 	*out_<<endl;
 
 	start_t = get_time_second();
-	solver_->Update(action, obs);
-	//solver_->UpdateHistory(action, obs); // NATAN CHANGES SOLVER
+	//solver_->Update(action, obs);
+	solver_->UpdateHistory(action, obs); // NATAN CHANGES SOLVER
 	end_t = get_time_second();
 	logi << "[RunStep] Time spent in Update(): " << (end_t - start_t) << endl;
 

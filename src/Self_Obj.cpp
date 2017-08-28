@@ -2,7 +2,7 @@
 
 
 
-Self_Obj::Self_Obj(Point& location, Move_Properties& movement, double attackRange, double pHit, int rangeObs, double pObservation)
+Self_Obj::Self_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit, int rangeObs, double pObservation)
 : Attack_Obj(location, movement, attackRange, pHit)
 , m_rangeObs(rangeObs)
 , m_pObservation(pObservation)

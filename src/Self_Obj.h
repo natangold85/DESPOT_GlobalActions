@@ -5,7 +5,7 @@
 
 #include "Attack_Obj.h"
 #include "Move_Properties.h"
-#include "Point.h"
+#include "Coordinate.h"
 
 /// class for self object in nxnGrid
 class Self_Obj :
@@ -16,7 +16,7 @@ public:
 	using shootOutcomes = std::vector<std::pair<intVec, double>>;
 
 	explicit Self_Obj() = default;
-	explicit Self_Obj(Point& location, Move_Properties& movement, double attackRange, double pHit, int rangeObs, double pObservation);
+	explicit Self_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit, int rangeObs, double pObservation);
 	virtual ~Self_Obj() = default;
 	Self_Obj(const Self_Obj&) = default;
 

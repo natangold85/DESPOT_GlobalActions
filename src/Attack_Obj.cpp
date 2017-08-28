@@ -2,7 +2,7 @@
 
 
 
-Attack_Obj::Attack_Obj(Point& location, Move_Properties& movement, double attackRange, double pHit)
+Attack_Obj::Attack_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit)
 : Movable_Obj(location, movement)
 , m_attack( new DirectAttack(attackRange, pHit) )
 {

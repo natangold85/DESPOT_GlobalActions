@@ -10,7 +10,7 @@
 /// for nxnGrid
 #include "..\CreateLUT\StateActionLUT.h"
 #include "MapOfPomdp.h"
-#include "Point.h"
+#include "Coordinate.h"
 #include "Move_properties.h"
 #include "Attack_Obj.h"
 #include "Movable_Obj.h"
@@ -20,7 +20,7 @@
 using namespace despot;
 
 const char * BACKUPFILENAME = "trash";
-const static char * LUTFILENAME = "Max_AllLUT.bin";
+const static char * LUTFILENAME = "5x5(E&S)_LUT(0.2).bin";
 
 Attack_Obj CreateEnemy(int x, int y, int gridSize)
 {
@@ -31,7 +31,7 @@ Attack_Obj CreateEnemy(int x, int y, int gridSize)
 	double pStay = 0.4;
 	double pTowardSelf = 0.4;
 
-	Point location(x,y);
+	Coordinate location(x,y);
 	Move_Properties movement(pStay, pTowardSelf);
 	return Attack_Obj(location, movement, attackRange, pHit);
 }
@@ -49,7 +49,7 @@ Self_Obj CreateSelf(int x, int y, int gridSize)
 	double pMove = 0.9;
 	double pStay = 1 - pMove;
 
-	Point location(x, y);
+	Coordinate location(x, y);
 	Move_Properties movement(pStay, pMove);
 
 	return Self_Obj(location, movement, attackRange, pHit, observationRange, pSuccessObs);
@@ -59,7 +59,7 @@ Movable_Obj CreateNInv(int x, int y)
 {
 	double pStay = 0.6;
 
-	Point location(x, y);
+	Coordinate location(x, y);
 	Move_Properties movement(pStay);
 
 	return Movable_Obj(location, movement);
@@ -69,7 +69,7 @@ ObjInGrid CreateShelter(int x, int y)
 {
 	double pStay = 0.6;
 
-	Point location(x, y);
+	Coordinate location(x, y);
 
 	return ObjInGrid(location);
 }
@@ -85,9 +85,14 @@ public:
 		int gridSize = 10;
 
 		Self_Obj self = CreateSelf(0, 0, gridSize);
+		std::vector<intVec> key(1);
+		key[0].resize(4);
+		key[0][0] = 3;
+		for (int i = 1; i < 4; ++i)
+			key[0][i] = 1;
 
-		std::shared_ptr<StateActionLUT> lut(new StateActionLUT(gridSize));
-
+		std::shared_ptr<StateActionLUT> lut(new StateActionLUT(key, gridSize));
+		
 		std::ifstream readLut(LUTFILENAME, std::ios::in | std::ios::binary);
 		if (readLut.fail())
 		{
@@ -108,7 +113,7 @@ public:
 			readLut.close();
 		}
 
-		nxnGrid *model = new nxnGrid(gridSize, 0, self, lut, nxnGrid::WO_NINV);
+		nxnGrid *model = new nxnGrid(gridSize, 0, self, lut, nxnGrid::RESCALE_ALL);
 
 		model->AddObj(CreateEnemy(0, 0, gridSize));
 		model->AddObj(CreateNInv(0, 0));

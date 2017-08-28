@@ -1,6 +1,8 @@
 #include "StateActionLUT.h"
 
 static const char * BACKUPFILENAME = "backup.bin";
+
+static float KILL_WEIGHT = 1;
 std::ofstream backupLUTWrite;
 std::ifstream backupLUTRead;
 int counter[4] = { 0,0,0,0 };
@@ -94,8 +96,8 @@ void StateActionLUT::InitLUTStateActions(std::vector<stateRewardMap> * stateRewa
 {
 	for (auto data : dataForObjects)
 	{
-		m_self.emplace_back(Self_Obj(Point(), Move_Properties(0.0, data.m_moveProb), data.m_attackRange, data.m_pHit, data.m_observationRange, data.m_pObservation));
-		m_enemy.emplace_back(Attack_Obj(Point(), Move_Properties(), data.m_attackRangeEnemy, data.m_pHit));
+		m_self.emplace_back(Self_Obj(Coordinate(), Move_Properties(0.0, data.m_moveProb), data.m_attackRange, data.m_pHit, data.m_observationRange, data.m_pObservation));
+		m_enemy.emplace_back(Attack_Obj(Coordinate(), Move_Properties(), data.m_attackRangeEnemy, data.m_pHit));
 	}
 	
 	int maxIdx = m_objectsNum.size() - 1;
@@ -242,7 +244,7 @@ StateActionLUT::actionReward StateActionLUT::BasicDecision(const intVec & belief
 
 	// if the enemy is in the same spot move enemy to the neares available location
 	if (!NoRepetitions(scaledState, 1, sarsopGridSize))
-		MoveEnemyLocation(beliefState, scaledState, 1 + m_objectsNum[0][1] + m_objectsNum[0][2], sarsopGridSize);
+		MoveEnemyLocation(beliefState, scaledState, 1 + m_objectsNum[0][1] + m_objectsNum[0][2], 0);
 
 	// if target is in self location shift map to the left or upper so self won't be in target location 
 	if (scaledState[0] == sarsopGridSize * sarsopGridSize - 1)
@@ -642,7 +644,7 @@ void StateActionLUT::UpdateRewardAttack(intVec & scaledState, const intVec& iden
 		{
 			// normalization of the meaning of a dead enemy (TODO : find better solution for it)
 			if (EnemyDead(v.first, identityVec, sarsopGridSize))
-				reward += 0.35 * v.second;
+				reward += KILL_WEIGHT * v.second;
 			else if (NonInvDeadByAttack(v.first, movingObjState, identityVec, sarsopGridSize))
 				reward += -1.0 * v.second;
 			else
@@ -894,9 +896,6 @@ bool StateActionLUT::NonInvDeadByAttack(intVec & afterAttack, intVec & beforeAtt
 
 std::ofstream & operator<<(std::ofstream & out, const StateActionLUT & map)
 {
-	// write key of sarsop being used
-	out.write(reinterpret_cast<const char *>(&map.m_objectsNum[0]), sizeof(int) * map.m_objectsNum.size());
-
 	// write size of map
 	int mapSize = map.m_stateActionMap.size();
 	out.write(reinterpret_cast<char *>(&mapSize), sizeof(int));
@@ -914,10 +913,6 @@ std::ofstream & operator<<(std::ofstream & out, const StateActionLUT & map)
 
 std::ifstream & operator>>(std::ifstream & in, StateActionLUT & map)
 {
-	// read key
-	map.m_objectsNum.resize(4);
-	in.read(reinterpret_cast<char *>(&map.m_objectsNum[0]), sizeof(int) * map.m_objectsNum.size());
-
 	// read map size
 	int mapSize = 0;
 	in.read(reinterpret_cast<char *>(&mapSize), sizeof(int));

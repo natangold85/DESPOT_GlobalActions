@@ -336,7 +336,7 @@ int SimpleTUI::run(int argc, char *argv[]) {
   /* =========================
    * Parse required parameters
    * =========================*/
-  int num_runs = 100;
+  int num_runs = 5000; // NATAN CHANGES SOLVER
   string simulator_type = "pomdp";
   string belief_type = "DEFAULT";
   int time_limit = -1;

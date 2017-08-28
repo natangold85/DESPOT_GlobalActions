@@ -18,7 +18,7 @@
 namespace despot 
 {
 
-using state_t = std::vector<int>;
+using intVec = std::vector<int>;
 /* =============================================================================
 * NxNState class
 * =============================================================================*/
@@ -36,20 +36,20 @@ public:
 
 	///update state given a new state
 	void UpdateState(int newStateIdx);
-	void UpdateState(state_t newState);
+	void UpdateState(intVec newState);
 
 	/// return the state vector given idx
-	static state_t IdxToState(int state);
+	static intVec IdxToState(int state);
 	/// return the state vector given state
-	static state_t IdxToState(nxnGridState state) { return IdxToState(state.state_id); };
+	static intVec IdxToState(nxnGridState state) { return IdxToState(state.state_id); };
 	/// return state given state vector
-	static int StateToIdx(state_t & state);
+	static int StateToIdx(intVec & state);
 
 	static int MaxState();
 	/// return true if enemy is located in a given location
-	bool EnemyLoc(state_t & state, int location) const;
+	bool EnemyLoc(intVec & state, int location) const;
 	/// return true if non-involved object is located in a given location
-	bool NInvLoc(state_t & state, int location) const;
+	bool NInvLoc(intVec & state, int location) const;
 	/// return true if shelter is located in a given location
 	bool ShelterLoc(int location) const;
 
@@ -82,7 +82,7 @@ public:
 	///	enum of objects
 	enum OBJECT { SELF, ENEMY, NON_INV, SHELTER, TARGET};
 	/// enum of type of calculation using sarsop data map
-	enum CALCULATION_TYPE { WITHOUT, ALL, WO_NINV, JUST_ENEMY, STUPID};
+	enum CALCULATION_TYPE { WITHOUT, ALL, WO_NINV, JUST_ENEMY, RESCALE_ALL, STUPID};
 	 
 	explicit nxnGrid(int gridSize, int traget, Self_Obj & self, std::shared_ptr<StateActionLUT> lut, enum CALCULATION_TYPE calcType = ALL);
 	~nxnGrid() = default;
@@ -115,7 +115,7 @@ public:
 	static int ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double & expectedReward);
 
 	/// initialize beliefState according to history
-	void InitBeliefState(state_t & beliefState, const History & h) const;
+	void InitBeliefState(intVec & beliefState, const History & h) const;
 
 	/// create a random init state for the model
 	void RandInitState();
@@ -173,54 +173,51 @@ public:
 private:
 	// actions functions
 	
-	void MoveToTarget(state_t & state, double random) const;
-	void MoveToShelter(state_t & state, double random) const;
-	void Attack(state_t & state, double random) const;
-	void MoveFromEnemy(state_t & state, double random) const;
+	void MoveToTarget(intVec & state, double random) const;
+	void MoveToShelter(intVec & state, double random) const;
+	void Attack(intVec & state, double random) const;
+	void MoveFromEnemy(intVec & state, double random) const;
 
 	/// try move to goTo (depend on random number)
-	void MoveToLocation(state_t & state, std::pair<int, int> & goTo, double random) const;
+	void MoveToLocation(intVec & state, Coordinate & goTo, double random) const;
 	/// implementation of MoveToLocation
-	int MoveToLocationIMP(state_t & state, std::pair<int, int> & goTo) const;
+	int MoveToLocationIMP(intVec & state, Coordinate & goTo) const;
 
 	/// return the farthest available location from goFrom
-	int MoveFromLocation(state_t & state, std::pair<int, int> & goFrom) const;
+	int MoveFromLocation(intVec & state, Coordinate & goFrom) const;
 
 	/// check if 2 idx are in a given range on the grid
-	static bool InRangeAttack(int idx1, int idx2, double range, int gridSize);
-
-	/// return true if the object are in range or dead
-	static bool InRangeObservation(int idx1, int idx2, double range, int gridSize);
+	static bool InRange(int idx1, int idx2, double range, int gridSize);
 
 	/// return true if the robot is dead by enemy attack given random num(0-1). state is not reference by reason
-	bool CalcIfDead(int enemyIdx, state_t state, double & randomNum) const;
+	bool CalcIfDead(int enemyIdx, intVec state, double & randomNum) const;
 
 	/// return identity of the objIdx
 	enum OBJECT WhoAmI(int objIdx) const;
 
 	/// create particles for belief state vector
-	void InsertParticlesRec(state_t & state, std::vector<State *> & particles, double pToBelief, int currIdx) const;
+	void InsertParticlesRec(intVec & state, std::vector<State *> & particles, double pToBelief, int currIdx) const;
 	
 	/// create a vector of random numbers between 0 - 1
 	static std::vector<double> CreateRandomVec(int size);
 
 	/// retrieve the observed state given current state and random number
-	int FindObservation(state_t state, double p) const;
+	int FindObservation(intVec state, double p) const;
 	
 	/// advance the state to the next step position (regarding to other objects movement)
-	void SetNextPosition(state_t & state, std::vector<double> & randomNum) const;
+	void SetNextPosition(intVec & state, std::vector<double> & randomNum) const;
 	
 	/// change object location according to its movement properties and random number
-	void CalcMovement(state_t & state, const Movable_Obj *object, double rand, int objIdx) const;
+	void CalcMovement(intVec & state, const Movable_Obj *object, double rand, int objIdx) const;
 
 	/// find the observed state according to random number and original state
-	void DecreasePObsRec(state_t & currState, state_t & originalState, int currIdx, double pToDecrease, double &pLeft) const;
+	void DecreasePObsRec(intVec & currState, intVec & originalState, int currIdx, double pToDecrease, double &pLeft) const;
 
 	/// return movement properties of an object
 	const Move_Properties & GetMovement(int objIdx);
 	
 	/// move a specific object closer to robot
-	void GetCloser(state_t & state, int objIdx, int gridSize) const;
+	void GetCloser(intVec & state, int objIdx, int gridSize) const;
 
 	/// return move given random number (0-1)
 	int FindObjMove(int currLocation, double random, int gridSize) const;
@@ -228,15 +225,26 @@ private:
 	/// return true if observedLocation is surrouning a location (in 1 of the 8 directions to location)
 	static bool IsNear(int location, int observedLocation, int gridSize);
 
+	// Rescaling belief state functions:
+	/// rescale belief state to a different grid
+	void RescaleBelief(const intVec & beliefState, intVec & scaledState, int newGridSize, int oldGridSize) const;
+
+	/// move object location to the closest scaled spot but current scaled location
+	void MoveObjectLocation(const intVec & beliefState, intVec & scaledState, int objIdx, int gridSize) const;
+	/// in case self is on target after scaling we need to shift it from target
+	void ShiftSelfFromTarget(const intVec & beliefState, intVec & scaledState, int gridSize) const;
+	/// drop shelter from state (make shelter in accessible)
+	void DropUnProtectedShelter(intVec & woShelter, int gridSize) const;
+
 	// CHECK LOCATIONS :
 	/// check if the next location (location + (x,y)) is in grid boundary
 	bool InBoundary(int location, int xChange, int yChange) const;
 	/// return true if the object idx location does not repeat in state
-	static bool NoRepetitions(state_t & state, int currIdx, int gridSize);
+	static bool NoRepetitions(intVec & state, int currIdx, int gridSize);
 	/// return true if location is valid for a given state (no repeats)
-	static bool ValidLocation(state_t & state, int location);
+	static bool ValidLocation(intVec & state, int location);
 	/// return true if location is valid for a given state (no repeats & in grid)
-	static bool ValidLegalLocation(state_t & state, int location, int gridSize);
+	static bool ValidLegalLocation(intVec & state, Coordinate location, int end, int gridSize);
 
 private:
 	int m_gridSize;
@@ -244,7 +252,7 @@ private:
 
 	Self_Obj m_self;
 	std::vector<Attack_Obj> m_enemyVec;
-	std::vector<Movable_Obj> m_nInvolvedVec;
+	std::vector<Movable_Obj> m_nonInvolvedVec;
 	
 	std::vector<ObjInGrid> m_shelters;
 

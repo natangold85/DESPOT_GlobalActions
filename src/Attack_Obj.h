@@ -5,7 +5,7 @@
 
 #include "Movable_Obj.h"
 #include "Move_Properties.h"
-#include "Point.h"
+#include "Coordinate.h"
 #include "Attacks.h"
 
 /// attack object on grid
@@ -14,7 +14,7 @@ class Attack_Obj : public Movable_Obj
 	using intVec = std::vector<int>;
 public:
 	explicit Attack_Obj() = default;
-	explicit Attack_Obj(Point& location, Move_Properties& movement, double attackRange, double pHit);
+	explicit Attack_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit);
 	virtual ~Attack_Obj() = default;
 	Attack_Obj(const Attack_Obj&) = default;
 	Attack_Obj& operator=(const Attack_Obj&) = default;
