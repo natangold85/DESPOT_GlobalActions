@@ -97,7 +97,7 @@ bool POMDPX::NoisyStep(State& s, double random_num, int action) const {
 	return parser_->IsTerminalState(state.vec_id);
 }
 
-bool POMDPX::Step(State& s, double random_num, int action, double& reward,
+bool POMDPX::Step(State& s, double random_num, int action, OBS_TYPE lastObs, double& reward,
 	OBS_TYPE& obs) const {
 	POMDPXState& state = static_cast<POMDPXState&>(s);
 
@@ -141,7 +141,8 @@ public:
 		model_(static_cast<const POMDPX*>(model)) {
 	}
 
-	void Update(int action, OBS_TYPE obs) {
+	void Update(int action, OBS_TYPE obs) 
+	{
 		history_.Add(action, obs);
 
 		vector<State*> updated;
@@ -154,8 +155,7 @@ public:
 				State* particle = particles_[j];
 				State* copy = model_->Copy(particle);
 
-				bool terminal = model_->Step(*copy, Random::RANDOM.NextDouble(),
-					action, reward, o);
+				bool terminal = model_->Step(*copy, Random::RANDOM.NextDouble(), action, obs, reward, o);
 				double prob = model_->ObsProb(obs, *copy, action);
 
 				if (!terminal && prob) { // Terminal state is not required to be explicitly represented and may not have any observation
@@ -534,7 +534,7 @@ void POMDPX::PrintAction(int action, ostream& out) const {
 	parser_->PrintAction(action, out);
 }
 
-State* POMDPX::Allocate(int state_id, double weight) const {
+State* POMDPX::Allocate(STATE_TYPE state_id, double weight) const {
 	POMDPXState* particle = memory_pool_.Allocate();
 	particle->state_id = state_id;
 	particle->weight = weight;

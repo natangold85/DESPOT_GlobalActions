@@ -234,7 +234,28 @@ void POMCP::GetTreeProperties(Tree_Properties & properties) const // NATAN CHANG
 
 	properties.m_height = root_->Height();
 	properties.m_size = root_->Size();
-	properties.m_balanceFactor = root_->BalanceFactor();
+
+	properties.m_levelSize.resize(properties.m_height - 1, 0);
+	root_->LevelSize(properties.m_levelSize, 0);
+
+	properties.m_levelActionSize.resize(model_->NumActions());
+	for (int i = 0; i < properties.m_levelActionSize.size(); ++i)
+		properties.m_levelActionSize[i].resize(properties.m_height - 1, 0);
+	root_->LevelActionSize(properties.m_levelActionSize, 0);
+
+	properties.m_preferredActionPortion.resize(properties.m_height, 0);
+	
+	// add slot for the leaf level
+	properties.m_levelSize.emplace_back(0);
+	root_->PreferredActionPortion(properties.m_preferredActionPortion, properties.m_levelSize, 0);
+	// pop leaf level
+	properties.m_levelSize.pop_back();
+	properties.m_preferredActionPortion.pop_back();
+}
+
+void POMCP::SaveTreeInFile(std::ofstream & out) const // NATAN CHANGES
+{
+	out << root_;
 }
 
 VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
@@ -251,7 +272,11 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 	
 	int dfltAction = 0;
 	double dfltValue = -100.0;
+	// on root node choose prefferred action according to prior else choose prefferred action according to state
+	//if (depth == 0)
 	dfltAction = nxnGrid::ChoosePreferredAction(prior, model, dfltValue); // NATAN CHANGES SOLVER
+	//else
+	//	dfltAction = nxnGrid::ChoosePreferredAction(state, model, dfltValue);
 
 	if (legal_actions.size() == 0) { // no prior knowledge, all actions are equal
 
@@ -308,8 +333,7 @@ double POMCP::Simulate(State* particle, RandomStreams& streams, VNode* vnode,
 
 	double reward;
 	OBS_TYPE obs;
-	bool terminal = model->Step(*particle, streams.Entry(particle->scenario_id),
-		action, reward, obs);
+	bool terminal = model->Step(*particle, streams.Entry(particle->scenario_id), action, prior->history().LastObservation(), reward, obs);
 
 	QNode* qnode = vnode->Child(action);
 	if (!terminal) {
@@ -343,13 +367,13 @@ double POMCP::Simulate(State* particle, VNode* vnode, const DSPOMDP* model,
 		return 0;
 
 	double explore_constant = prior->exploration_constant();
-	int action = 0;
 
-	action = UpperBoundAction(vnode, explore_constant);
+	int action = UpperBoundAction(vnode, explore_constant);
 
 	double reward;
 	OBS_TYPE obs;
-	bool terminal = model->Step(*particle, action, reward, obs);
+	OBS_TYPE lastObs = prior->history().Size() > 0 ? prior->history().LastObservation() : particle->state_id;
+	bool terminal = model->Step(*particle, action, lastObs, reward, obs);
 
 	QNode* qnode = vnode->Child(action);
 	if (!terminal) {
@@ -390,8 +414,7 @@ double POMCP::Rollout(State* particle, RandomStreams& streams, int depth,
 
 	double reward;
 	OBS_TYPE obs;
-	bool terminal = model->Step(*particle, streams.Entry(particle->scenario_id),
-		action, reward, obs);
+	bool terminal = model->Step(*particle, streams.Entry(particle->scenario_id), action, prior->history().LastObservation(), reward, obs);
 	if (!terminal) {
 		prior->Add(action, obs);
 		streams.Advance();
@@ -412,11 +435,11 @@ double POMCP::Rollout(State* particle, int depth, const DSPOMDP* model,
 	}
 
 	double offlineReward = -100.0;
-	int action = nxnGrid::ChoosePreferredAction(prior, model, offlineReward); //NATAN CHANGES SOLVER
-	//int action = prior->GetAction(*particle);
+	int action = nxnGrid::ChoosePreferredAction(prior, model, offlineReward);//NATAN CHANGES SOLVER
+
 	double reward;
 	OBS_TYPE obs;
-	bool terminal = model->Step(*particle, action, reward, obs);
+	bool terminal = model->Step(*particle, action, prior->history().LastObservation(), reward, obs);
 	if (!terminal) {
 		prior->Add(action, obs);
 		reward += Globals::Discount() * Rollout(particle, depth + 1, model, prior);
@@ -450,8 +473,7 @@ ValuedAction POMCP::Evaluate(VNode* root, vector<State*>& particles,
 
 			double reward;
 			OBS_TYPE obs;
-			bool terminal = model->Step(*copy, streams.Entry(copy->scenario_id),
-				action, reward, obs);
+			bool terminal = model->Step(*copy, streams.Entry(copy->scenario_id), action, prior->history().LastObservation(), reward, obs);
 
 			val += discount * reward;
 			discount *= Globals::Discount();

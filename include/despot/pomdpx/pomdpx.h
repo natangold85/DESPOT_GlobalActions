@@ -72,7 +72,7 @@ public:
 	}
 
 	bool NoisyStep(State& s, double random_num, int action) const;
-	bool Step(State& s, double random_num, int action, double& reward,
+	bool Step(State& s, double random_num, int action, OBS_TYPE lastObs, double& reward,
 		OBS_TYPE& obs) const;
 	int NumActions() const;
 	int NumStates() const;
@@ -112,7 +112,7 @@ public:
 	void PrintObs(const State& state, OBS_TYPE obs, std::ostream& out = std::cout) const;
 	void PrintAction(int action, std::ostream& out = std::cout) const;
 
-	State* Allocate(int state_id, double weight) const;
+	State* Allocate(STATE_TYPE state_id, double weight) const;
 	State* Copy(const State* particle) const;
 	void Free(State* particle) const;
 	int NumActiveParticles() const;

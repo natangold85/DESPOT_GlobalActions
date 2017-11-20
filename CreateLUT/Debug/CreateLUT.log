@@ -1,6 +1,0 @@
-﻿  main.cpp
-c:\users\natango\documents\github\despot_vsglobalactions\createlut\main.cpp(35): warning C4018: '<': signed/unsigned mismatch
-c:\users\natango\documents\github\despot_vsglobalactions\createlut\main.cpp(62): warning C4018: '<': signed/unsigned mismatch
-c:\users\natango\documents\github\despot_vsglobalactions\createlut\main.cpp(110): warning C4018: '<': signed/unsigned mismatch
-  CreateLUT.vcxproj -> C:\Users\natango\Documents\GitHub\Despot_vsGlobalActions\Debug\CreateLUT.exe
-  CreateLUT.vcxproj -> C:\Users\natango\Documents\GitHub\Despot_vsGlobalActions\Debug\CreateLUT.pdb (Partial PDB)

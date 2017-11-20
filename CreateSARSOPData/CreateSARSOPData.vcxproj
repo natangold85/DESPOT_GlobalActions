@@ -41,7 +41,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -116,24 +116,28 @@
   <ItemGroup>
     <ClCompile Include="..\src\Attacks.cpp" />
     <ClCompile Include="..\src\Attack_Obj.cpp" />
-    <ClCompile Include="..\src\MapOfPomdp.cpp" />
+    <ClCompile Include="..\src\Coordinate.cpp" />
     <ClCompile Include="..\src\Movable_Obj.cpp" />
     <ClCompile Include="..\src\Move_Properties.cpp" />
+    <ClCompile Include="..\src\nxnGridOfflineGlobalActions.cpp" />
+    <ClCompile Include="..\src\nxnGridOfflineLocalActions.cpp" />
     <ClCompile Include="..\src\ObjInGrid.cpp" />
-    <ClCompile Include="..\src\Point.cpp" />
-    <ClCompile Include="..\src\POMDP_Writer.cpp" />
+    <ClCompile Include="..\src\nxnGridOffline.cpp" />
+    <ClCompile Include="..\src\Observations.cpp" />
     <ClCompile Include="..\src\Self_Obj.cpp" />
     <ClCompile Include="CreateSARSOP_Main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\Attacks.h" />
     <ClInclude Include="..\src\Attack_Obj.h" />
-    <ClInclude Include="..\src\MapOfPomdp.h" />
+    <ClInclude Include="..\src\Coordinate.h" />
     <ClInclude Include="..\src\Movable_Obj.h" />
     <ClInclude Include="..\src\Move_Properties.h" />
+    <ClInclude Include="..\src\nxnGridOfflineGlobalActions.h" />
+    <ClInclude Include="..\src\nxnGridOfflineLocalActions.h" />
     <ClInclude Include="..\src\ObjInGrid.h" />
-    <ClInclude Include="..\src\Point.h" />
-    <ClInclude Include="..\src\POMDP_Writer.h" />
+    <ClInclude Include="..\src\nxnGridOffline.h" />
+    <ClInclude Include="..\src\Observations.h" />
     <ClInclude Include="..\src\Self_Obj.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

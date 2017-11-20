@@ -1,7 +1,7 @@
 #ifndef MAPOFPOMDP_H
 #define MAPOFPOMDP_H
 
-#include "POMDP_Writer.h"
+#include "nxnGridOffline.h"
 #include <iostream>
 #include <map>
 #include <algorithm>

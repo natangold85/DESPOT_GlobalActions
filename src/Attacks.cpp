@@ -13,33 +13,18 @@ inline int Sign(int num)
 	return 1 * (num >= 0) - 1 * (num < 0);
 }
 
-inline DirectAttack::coord Abs(DirectAttack::coord num)
+inline Coordinate Abs(Coordinate num)
 {
-	num.first = Abs(num.first);
-	num.second = Abs(num.second);
+	num.X() = Abs(num.X());
+	num.Y() = Abs(num.Y());
 	return num;
 }
 
-inline DirectAttack::coord Sign(DirectAttack::coord num)
+inline Coordinate Sign(Coordinate num)
 {
-	num.first = Sign(num.first);
-	num.second = Sign(num.second);
+	num.X() = Sign(num.X());
+	num.Y() = Sign(num.Y());
 	return num;
-}
-
-inline DirectAttack::coord operator-(DirectAttack::coord & a, DirectAttack::coord & b)
-{
-	DirectAttack::coord ret(a);
-	ret.first -= b.first;
-	ret.second -= b.second;
-
-	return ret;
-}
-
-
-inline bool operator!=(std::pair<double, double> & a, DirectAttack::coord & b)
-{
-	return (a.first != b.first) | (a.second != b.second);
 }
 
 inline std::pair<double, double> & operator+=(std::pair<double, double> & a, std::pair<double, double> & b)
@@ -51,7 +36,7 @@ inline std::pair<double, double> & operator+=(std::pair<double, double> & a, std
 
 inline std::pair<double, double> operator+(std::pair<double, double> & a, std::pair<double, double> & b)
 {
-	DirectAttack::coord ret(a);
+	std::pair<double, double> ret(a);
 	ret.first += b.first;
 	ret.second += b.second;
 
@@ -64,11 +49,6 @@ inline double Distance(std::pair<double, double> & a, std::pair<double, double> 
 	return sqrt(diff.first * diff.first + diff.second * diff.second);
 }
 
-inline double Distance(DirectAttack::coord & a, DirectAttack::coord & b)
-{
-	DirectAttack::coord diff = std::make_pair(a.first - b.first, a.second - b.second);
-	return sqrt(diff.first * diff.first + diff.second * diff.second);
-}
 
 inline void Swap(int &a, int &b)
 {
@@ -83,109 +63,75 @@ DirectAttack::DirectAttack(double range, double pHit)
 {
 }
 
-bool DirectAttack::EnemyHitDESPOT(int selfLoc, int attackerLoc, intVec & otherObj, intVec & shelterLoc, int gridSize, double & random) const
+void DirectAttack::AttackOnline(int attackerLoc, int targetLoc, intVec & state, intVec & shelterLoc, int gridSize, double random) const
 {
-	coord self(selfLoc % gridSize, selfLoc / gridSize);
-	coord enemy(attackerLoc % gridSize, attackerLoc / gridSize);
+	Coordinate attacker(attackerLoc % gridSize, attackerLoc / gridSize);
+	Coordinate target(targetLoc % gridSize, targetLoc / gridSize);
+	double dist = target.RealDistance(attacker);
 
-	double dist = Distance(self, enemy);
-
-	bool isHit = false;
-
-	if (dist <= m_range)
+	if (dist <= m_range & dist > 0)
 	{
-		// check outcomes for enemy as attacker, don't treat cases when enemy kill non involved
+		// calculate attack result
 		shootOutcomes result;
-		intVec fightingObj{ 1, 0 };
-		CalcAttackResult(otherObj, shelterLoc, fightingObj, gridSize, result);
+		CalcAttackResult(attacker, target, state, shelterLoc, gridSize, result);
+		// run on result and return true if self object killed
 		for (auto v : result)
 		{
 			random -= v.second;
 			if (random <= 0.0)
 			{
-				otherObj = v.first;
-				isHit = (otherObj[0] == gridSize * gridSize);
-				break;
+				state = v.first;
+				return;
 			}
 		}
 	}
-	return isHit;
-}
-
-void DirectAttack::CalcSelfAttackDESPOT(intVec &state, intVec & shelters, int gridSize, double random) const
-{
-	// the attack is allways directed to enemy (location 1)
-	intVec fightingObj{ 0, 1 };
-	shootOutcomes result;
-	CalcAttackResult(state, shelters, fightingObj, gridSize, result);
-
-	for (auto v : result)
-	{
-		random -= v.second;
-		if (random <= 0.0)
-		{
-			state = v.first;
-			break;
-		}
-	}
-}
-
-void DirectAttack::EnemyHitSARSOP(intVec state, intVec shelters, int gridSize, double & pHit) const
-{
-	coord self(state[0] % gridSize, state[0] / gridSize);
-	coord enemy(state[1] % gridSize, state[1] / gridSize);
-
-	double dist = Distance(self, enemy);
-
-	
-	if (dist <= m_range)
-	{
-		// check outcomes for enemy as attacker, don't treat cases when enemy kill non involved
-		shootOutcomes result;
-		intVec fightingObj{ 1, 0 };
-		CalcAttackResult(state, shelters, fightingObj, gridSize, result);
-		pHit = 0.0;
-		for (auto v : result)
-		{
-			if (v.first[0] == gridSize * gridSize)
-				pHit += v.second;
-		}
-	}
-	else
-		pHit = 0.0;
-}
-
-void DirectAttack::CalcSelfAttackSARSOP(intVec & state, intVec & shelters, int gridSize, shootOutcomes & result) const
-{
-	// the attack is allways directed to enemy (location 1)
-	intVec fightingObj{ 0, 1 };
-	CalcAttackResult(state, shelters, fightingObj, gridSize, result);
-
-
 	return;
 }
 
-bool DirectAttack::IsInRange(int location, int otherObjLocation, int gridSize) const
+void DirectAttack::AttackOffline(int attackerLoc, int targetLoc, intVec & state, intVec & shelters, int gridSize, shootOutcomes & result) const
 {
-	coord self = std::make_pair(location % gridSize, location / gridSize);
-	coord object = std::make_pair(otherObjLocation % gridSize, otherObjLocation / gridSize);
-
-	return Distance(self, object) <= m_range;
+	Coordinate attacker(attackerLoc % gridSize, attackerLoc / gridSize);
+	Coordinate target(targetLoc % gridSize, targetLoc / gridSize);
+	// check outcomes for enemy as attacker, don't treat cases when enemy kill non involved
+	CalcAttackResult(attacker, target, state, shelters, gridSize, result);
 }
-void DirectAttack::CalcAttackResult(intVec state, intVec shelters, intVec & fightingObjects, int gridSize, shootOutcomes & result) const
+
+//void DirectAttack::CalcSelfAttackOffline(intVec & state, intVec & shelters, int gridSize, shootOutcomes & result) const
+//{
+//	// TODO: make self attack also directed to observation
+//	// the attack is allways directed to enemy (location 1)
+//	intVec fightingObj{ state[0], state[1] };
+//	CalcAttackResult(state, shelters, fightingObj, gridSize, result);
+//
+//	return;
+//}
+
+bool DirectAttack::InRange(int location, int otherObjLocation, int gridSize) const
 {
-	coord attacker(state[fightingObjects[0]] % gridSize, state[fightingObjects[0]] / gridSize);
-	coord defender(state[fightingObjects[1]] % gridSize, state[fightingObjects[1]] / gridSize);
+	Coordinate self(location % gridSize, location / gridSize);
+	Coordinate object(otherObjLocation % gridSize, otherObjLocation / gridSize);
 
+	return self.RealDistance(object) <= m_range;
+}
+
+std::string DirectAttack::String() const
+{
+	std::string ret = "Direct Attack: range = ";
+	ret += std::to_string(m_range) + " pHit = " + std::to_string(m_pHit);
+	return ret;
+}
+
+void DirectAttack::CalcAttackResult(Coordinate & attacker, Coordinate & target, intVec state, intVec shelters, int gridSize, shootOutcomes & result) const
+{
 	std::pair<double, double> change;
-	CalcChanges(attacker, defender, change);
+	CalcChanges(attacker, target, change);
 
-	std::pair<double, double> selfLocation(attacker);
-	std::pair<double, double> currLocation(attacker);
-	coord prevLocation(attacker);
-	coord location;
+	std::pair<double, double> selfLocation(attacker.X(), attacker.Y());
+	std::pair<double, double> currLocation(attacker.X(), attacker.Y());
+	Coordinate prevLocation(attacker);
+	Coordinate location;
 
-	while (prevLocation != defender)
+	while (prevLocation != target)
 	{
 		prevLocation = currLocation;
 		currLocation += change;
@@ -226,53 +172,53 @@ void DirectAttack::CalcAttackResult(intVec state, intVec shelters, intVec & figh
 	}
 }
 
-void DirectAttack::CalcChanges(coord obj1, coord obj2, std::pair<double, double> & change)
+void DirectAttack::CalcChanges(Coordinate obj1, Coordinate obj2, std::pair<double, double> & change)
 {
-	if (obj1.first == obj2.first)
+	if (obj1.X() == obj2.X())
 	{
 		change.first = 0.0;
-		change.second = (obj2.second >= obj1.second) - (obj2.second < obj1.second);
+		change.second = (obj2.Y() >= obj1.Y()) - (obj2.Y() < obj1.Y());
 			
 	}
-	else if (obj1.second == obj2.second)
+	else if (obj1.Y() == obj2.Y())
 	{
-		change.first = (obj2.first >= obj1.first) - (obj2.first < obj1.first);
+		change.first = (obj2.X() >= obj1.X()) - (obj2.X() < obj1.X());
 		change.second = 0.0;
 	}
 	else
 	{
-		coord diff = obj2 - obj1;
-		coord absDiff = Abs(diff);
-		coord direction = Sign(diff);
-		if (absDiff.first > absDiff.second)
+		Coordinate diff = obj2 - obj1;
+		Coordinate absDiff = Abs(diff);
+		Coordinate direction = Sign(diff);
+		if (absDiff.X() > absDiff.Y())
 		{
-			change.second = direction.second;
-			change.first = direction.first * static_cast<double>(absDiff.first) / absDiff.first;
+			change.second = direction.Y();
+			change.first = direction.X() * static_cast<double>(absDiff.X()) / absDiff.X();
 		}
 		else
 		{
-			change.first = direction.first;
-			change.second = direction.second * static_cast<double>(absDiff.second) / absDiff.first;
+			change.first = direction.X();
+			change.second = direction.Y() * static_cast<double>(absDiff.Y()) / absDiff.Y();
 		}
 	}
 }
 
-double DirectAttack::CalcDiversion(intVec & state, intVec & shelters, coord & hit, int gridSize, coord &  prevShotLocation, shootOutcomes & result) const
+double DirectAttack::CalcDiversion(intVec & state, intVec & shelters, Coordinate & hit, int gridSize, Coordinate &  prevShotLocation, shootOutcomes & result) const
 {
-	coord sides[4];
+	Coordinate sides[4];
 	for (size_t i = 0; i < 4; ++i)
 		sides[i] = hit;
 
-	++sides[0].first;
-	--sides[1].first;
-	++sides[2].second;
-	--sides[3].second;
+	++sides[0].X();
+	--sides[1].X();
+	++sides[2].Y();
+	--sides[3].Y();
 
 	std::vector<std::pair<double, int>> dist;
 	for (size_t i = 0; i < 4; ++i)
 	{
 		if (sides[i] != prevShotLocation)
-			dist.emplace_back(std::make_pair(Distance(sides[i], prevShotLocation), i));
+			dist.emplace_back(std::make_pair(sides[i].RealDistance(prevShotLocation), i));
 	}
 
 	std::sort(dist.begin(), dist.end());
@@ -284,7 +230,7 @@ double DirectAttack::CalcDiversion(intVec & state, intVec & shelters, coord & hi
 		double pDiverge = (1 - m_pHit) / NUM_DIVERSIONS;
 		if ( InFrame(sides[dist[i].second], gridSize) )
 		{
-			int divLocation = sides[dist[i].second].first + sides[dist[i].second].second * gridSize;
+			int divLocation = sides[dist[i].second].X() + sides[dist[i].second].Y() * gridSize;
 			auto v = newState.begin();
 			for (; v != newState.end() ; ++v)
 			{
@@ -312,9 +258,9 @@ double DirectAttack::CalcDiversion(intVec & state, intVec & shelters, coord & hi
 	return outOfFrame;
 }
 
-bool DirectAttack::InFrame(coord point, int gridSize)
+bool DirectAttack::InFrame(Coordinate point, int gridSize)
 {
-	return (point.first >= 0) & (point.first < gridSize) & (point.second >= 0) & (point.second < gridSize);
+	return (point.X() >= 0) & (point.X() < gridSize) & (point.Y() >= 0) & (point.Y() < gridSize);
 }
 
 bool DirectAttack::SearchForShelter(intVec shelters, int location)

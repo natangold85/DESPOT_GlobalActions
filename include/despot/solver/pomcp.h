@@ -107,6 +107,7 @@ public:
 
 	POMCPPrior* GetPrior() { return prior_; }; //NATAN CHANGES
 	void GetTreeProperties(Tree_Properties & properties) const; // NATAN CHANGES
+	void SaveTreeInFile(std::ofstream & out) const; // NATAN CHANGES
 
 	static VNode* CreateVNode(int depth, const State*, POMCPPrior* prior,
 		const DSPOMDP* model);

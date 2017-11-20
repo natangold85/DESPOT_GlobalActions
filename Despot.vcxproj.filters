@@ -55,12 +55,6 @@
     <Filter Include="Header Files\util\tinyxml">
       <UniqueIdentifier>{1bd63c84-5f75-4c35-813e-58b8739c51fb}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\CreateLUT">
-      <UniqueIdentifier>{0f546303-d136-4591-b2d5-efa8e86d9931}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\CreateLUT">
-      <UniqueIdentifier>{d3370242-2ff0-40ea-b4e0-1de4ac98d6af}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include=".\include\despot\config.h">
@@ -189,26 +183,23 @@
     <ClInclude Include="src\ObjInGrid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Point.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\Self_Obj.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\MapOfPomdp.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\POMDP_Writer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Attacks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="CreateLUT\StateActionLUT.h">
-      <Filter>Header Files\CreateLUT</Filter>
+    <ClInclude Include="src\Coordinate.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="CreateLUT\Coordinate.h">
-      <Filter>Header Files\CreateLUT</Filter>
+    <ClInclude Include="src\nxnGridGlobalActions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\nxnGridLocalActions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Observations.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -311,9 +302,6 @@
     <ClCompile Include=".\src\pomdpx\parser\variable.cpp">
       <Filter>Source Files\pomdpx\parser</Filter>
     </ClCompile>
-    <ClCompile Include="src\Source.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\nxnGrid.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -329,26 +317,26 @@
     <ClCompile Include="src\ObjInGrid.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Point.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\Self_Obj.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\MapOfPomdp.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\POMDP_Writer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Attacks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="CreateLUT\StateActionLUT.cpp">
-      <Filter>Source Files\CreateLUT</Filter>
+    <ClCompile Include="src\Coordinate.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="CreateLUT\Coordinate.cpp">
-      <Filter>Source Files\CreateLUT</Filter>
+    <ClCompile Include="src\nxnGridGlobalActions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\nxnGridLocalActions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\despotMain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Observations.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

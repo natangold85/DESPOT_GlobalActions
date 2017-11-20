@@ -22,7 +22,7 @@ State::State() :
 	state_id(-1) {
 }
 
-State::State(int _state_id, double _weight) :
+State::State(STATE_TYPE _state_id, double _weight) :
 	state_id(_state_id),
 	weight(_weight) {
 }
@@ -68,15 +68,15 @@ DSPOMDP::DSPOMDP() {
 DSPOMDP::~DSPOMDP() {
 }
 
-bool DSPOMDP::Step(State& state, int action, double& reward,
+bool DSPOMDP::Step(State& state, int action, OBS_TYPE lastObs, double& reward,
 	OBS_TYPE& obs) const {
-	return Step(state, Random::RANDOM.NextDouble(), action, reward, obs);
+	return Step(state, Random::RANDOM.NextDouble(), action, lastObs, reward, obs);
 }
 
-bool DSPOMDP::Step(State& state, double random_num, int action,
+bool DSPOMDP::Step(State& state, double random_num, int action, OBS_TYPE lastObs,
 	double& reward) const {
 	OBS_TYPE obs;
-	return Step(state, random_num, action, reward, obs);
+	return Step(state, random_num, action, lastObs, reward, obs);
 }
 
 ParticleUpperBound* DSPOMDP::CreateParticleUpperBound(string name) const {

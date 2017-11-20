@@ -2,60 +2,55 @@
 #include <string>		// std::string
 #include <Windows.h>	// CreateFile ..
 #include <fstream>      // std::ofstream
-#include <ctime>      // std::ofstream
+#include <ctime>      // time
 #include <algorithm>      // for_each
 
-#include "../src/MapOfPomdp.h"
-#include "../src/POMDP_Writer.h"
-#include "../src/Point.h"
+
+// possible model solutions possibilities
+#include "../src/nxnGridOfflineGlobalActions.h"
+#include "../src/nxnGridOfflineLocalActions.h"
+
+// properties of objects
+#include "../src/Coordinate.h"
 #include "../src/Move_Properties.h"
+#include "../src/Attacks.h"
+#include "../src/Observations.h"
+
+// objects
 #include "../src/Self_Obj.h"
 #include "../src/Attack_Obj.h"
 #include "../src/Movable_Obj.h"
 #include "../src/ObjInGrid.h"
 
-using identityVec = std::vector<POMDP_Writer::IDENTITY>;
+// choose model to run
+enum MODELS_AVAILABLE { NXN_LOCAL_ACTIONS, NXN_GLOBAL_ACTIONS };
+static MODELS_AVAILABLE s_UsingModel = NXN_GLOBAL_ACTIONS;
+// buffer size for read
+const static int s_BUFFER_SIZE = 1024;
 
-const static int BUFFER_SIZE = 1024;
+using lutSarsop = std::map<int, std::vector<double>>;
 
-const static char * DATAFILENAME = "data.bin";
-const static char * TMPFILENAME = "backup.bin";
-std::string SOLVER_LOCATION = "C:\\Users\\natango\\Documents\\GitHub\\pomdp_solver\\src\\Release";
+// appl solver directory location
+std::string s_SOLVER_LOCATION = "D:\\madaan\\SARSOP\\src\\Release\\";
 
-std::ofstream g_tmpBackupFile;
+static std::ofstream s_BACKUP_FILE;
 
-HANDLE g_writePipe, g_readPipe;
+// lut from object identity to char symbolized it
+static char * s_OBJ_TO_STRING;
 
-char * OBJECT_TO_STRING;
-
-void InitPipe(HANDLE *writePipe, HANDLE *readPipe)
-{
-	SECURITY_ATTRIBUTES sa;
-	ZeroMemory(&sa, sizeof(sa));
-	sa.nLength = sizeof(sa);
-	sa.bInheritHandle = TRUE;
-
-	if (!CreatePipe(readPipe, writePipe, &sa, 0))
-	{
-		std::cerr << "CreatePipe failed (" << GetLastError() << ")\n";
-		exit(1);
-	}
-}
-
-void RunSolver(std::string &fname, std::string &policy_name)
+void TranlateToX(const std::string &pomdp, const std::string &pomdpx)
 {
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
 
 	ZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
-	si.dwFlags |= STARTF_USESTDHANDLES;
+	//si.dwFlags |= STARTF_USESTDHANDLES;
 	ZeroMemory(&pi, sizeof(pi));
 
-	//run solver with timeout of 100 seconds
-	std::string cmd = SOLVER_LOCATION + "\\pomdpsol.exe --timeout 100 --precision 0.005 ";
-	cmd += fname + " -o " + policy_name;
-	if (!CreateProcess(NULL, const_cast<char *>(cmd.c_str()) , NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	//run solver with timeout of 100 seconds and precision boundary of 0.005 (the first among these two conditions)
+	std::string cmd = s_SOLVER_LOCATION + "pomdpconvert.exe " + pomdp + " " + pomdpx;
+	if (!CreateProcess(NULL, const_cast<char *>(cmd.c_str()), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
 		std::cout << "CreateProcess failed (" << GetLastError() << ")\n";
 		exit(1);
@@ -63,8 +58,42 @@ void RunSolver(std::string &fname, std::string &policy_name)
 	// wait for the solver to finish
 	WaitForSingleObject(pi.hProcess, INFINITE);
 }
+/// run solver save policy in policty_name
+void RunSolver(std::string &fname, std::string &policy_name, std::string &solverOutF)
+{
+	//STARTUPINFO si;
+	//PROCESS_INFORMATION pi;
 
-void RunEvaluator(std::string &fname, std::string &policy_name)
+	//ZeroMemory(&si, sizeof(si));
+	//si.cb = sizeof(si);
+	//ZeroMemory(&pi, sizeof(pi));
+	//// direct the output to the write pipe
+	//si.hStdInput = NULL;
+
+	//run solver with timeout of 10000 seconds and precision boundary of 0.005 (the first among these two conditions)
+	std::string cmd = s_SOLVER_LOCATION + "pomdpsol.exe --timeout 30000 --precision 0.005 ";
+	cmd += fname + " -o " + policy_name + " > " + solverOutF;
+	
+	//if (!CreateProcess(NULL, const_cast<char *>(cmd.c_str()), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
+	//{
+	//	std::cerr << "CreateProcess failed (" << GetLastError() << ")\n";
+	//	exit(1);
+	//}
+
+	//// wait for the evaluation to finish
+	//WaitForSingleObject(pi.hProcess, INFINITE);
+	
+	
+	int stat = system(cmd.c_str());
+
+	if (stat != 0)
+	{
+		std::cerr << "error in running SARSOP solver\n";
+		exit(1);
+	}
+}
+
+void RunSimulator(std::string &fname, std::string &policy_name)
 {
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
@@ -73,13 +102,10 @@ void RunEvaluator(std::string &fname, std::string &policy_name)
 	si.cb = sizeof(si);
 	ZeroMemory(&pi, sizeof(pi));
 	// direct the output to the write pipe
-	si.dwFlags |= STARTF_USESTDHANDLES;
 	si.hStdInput = NULL;
-	si.hStdOutput = g_writePipe;
-	si.hStdError = g_writePipe;
 
-	// run evaluator with 400 simulations
-	std::string cmd = SOLVER_LOCATION + "\\pomdpeval.exe --simLen 50 --simNum 200 --output-file test.log ";
+	// run evaluator with 200 simulations
+	std::string cmd = s_SOLVER_LOCATION + "pomdpsim.exe --simLen 50 --simNum 50 ";
 	cmd += "--policy-file " + policy_name + " " + fname;
 	if (!CreateProcess(NULL, const_cast<char *>(cmd.c_str()), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
 	{
@@ -108,361 +134,227 @@ double FindAndAdvance(const char **str)
 }
 
 
-std::vector<double> ReadReward()
+void ReadReward(nxnGridOffline * pomdp, lutSarsop & sarsopMap, std::string & sarsopDataFName)
 {
-	DWORD redword;
-	std::string output;
-	// read from pipe output from evaluation
-	do
+	std::ifstream data(sarsopDataFName, std::ios::in | std::ios::binary);
+	if (data.fail())
 	{
-		char buf[BUFFER_SIZE + 1];
-		
-		if (!ReadFile(g_readPipe, buf, BUFFER_SIZE, &redword, 0))
+		std::cout << "open sarsop file failed with error code = " << GetLastError() << "\npress any key to exit\n";
+		char c;
+		std::cin >> c;
+		exit(0);
+	}
+
+	int size;
+	data.read((char *)&size, sizeof(int));
+	int numActions;
+	data.read((char *)&numActions, sizeof(int));
+	for (int stateCount = 0; stateCount < size; ++stateCount)
+	{
+		int stateIdx = pomdp->StateCount2StateIdx(stateCount);
+		sarsopMap[stateIdx].resize(numActions);
+
+		for (int action = 0; action < numActions; ++action)
 		{
-			std::cerr << "ReadFile failed (" << GetLastError() << ")\n";
+			double reward;
+			data.read((char *)&reward, sizeof(double));
+			sarsopMap[stateIdx][action] = reward;
 		}
 
-		buf[redword] = '\0';
-		output += buf;
-	} while (redword == BUFFER_SIZE);
-
-	//default value in case of error in solver
-	std::vector<double> retval{ -1000.0, -1000.0, -1000.0 };
-	// searching for the reward (according to the format of the evaluator) if the evaluator failed return retval filled with -1000
-	auto found = output.find("Finishing ...");
-	if (found == std::string::npos)
-		return retval;
-
-	const char *str = &(output.c_str()[found]);
-	
-	FindAndAdvance(&str);
-	FindAndAdvance(&str);
-	for (int i = 0; i < 3 ; ++i)
-		retval[i] = FindAndAdvance(&str);
-
-	return retval;
+	}
 }
 
-Attack_Obj CreateEnemy(int gridSize)
+Attack_Obj CreateEnemy(int gridSize, Coordinate & location)
 {
 	double attackRange = static_cast<double>(gridSize) / 4;
 	attackRange += (attackRange < 1);
-	// for diagonal attack (need to overcome sqrt(2))
-	attackRange += 0.25 * (gridSize == 5);
 
 	double pHit = 0.4;
-	double pStay = 0.4;
+	std::shared_ptr<Attack> attack(new DirectAttack(attackRange, pHit));
+
+	double pStay = 0.35;
 	double pTowardSelf = 0.4;
 
-	Point location;
 	Move_Properties movement(pStay, pTowardSelf);
-	return Attack_Obj(location, movement, attackRange, pHit);
+	return Attack_Obj(location, movement, attack);
 }
 
-Self_Obj CreateSelf(int gridSize)
+Self_Obj CreateSelf(int gridSize, Coordinate & location)
 {
 	double attackRange = static_cast<double>(gridSize) / 4;
 	attackRange += (attackRange < 1);
-	// for diagonal attack (need to overcome sqrt(2))
-	attackRange += 0.25 * (gridSize == 5);
 
+	// for compensating the attack to non observed object
 	double pHit = 0.5;
-	int observationRange = gridSize * 2;
-	double pSuccessObs = 0.9;
+	std::shared_ptr<Attack> attack(new DirectAttack(attackRange, pHit));
+	double pDistanceFactor = 0.4;
+	std::shared_ptr<Observation> obs(new ObservationByDistance(pDistanceFactor));
 
-	
 	double pMove = 0.9;
 	double pStay = 1 - pMove;
 
-	Point location;
 	Move_Properties movement(pStay, pMove);
 
-	return Self_Obj(location, movement, attackRange, pHit, observationRange, pSuccessObs);
+	// location doesn't mind because each run we change location
+	return Self_Obj(location, movement, attack, obs);
 }
 
-Movable_Obj CreateNInv()
+Movable_Obj CreateNInv(Coordinate & location)
 {
 	double pStay = 0.6;
 
-	Point location;
 	Move_Properties movement(pStay);
 
+	// location doesn't mind because each run we change location
 	return Movable_Obj(location, movement);
 }
 
-ObjInGrid CreateShelter()
+ObjInGrid CreateShelter(Coordinate & location)
 {
-	Point location;
-
 	return ObjInGrid(location);
 }
 
-bool NoRepeats(MapOfPomdp::intVec &state, int objIdx)
+void CreateLUT(nxnGridOffline * pomdp, std::string & prefix, lutSarsop & sarsopMap)
 {
-	for (int i = 0; i < objIdx; ++i)
-	{
-		if (state[i] == state[objIdx])
-		{
-			return false;
-		}
-	}
-	return true;
-}
-void LastRec(POMDP_Writer & pomdp, MapOfPomdp::intVec & state, MapOfPomdp::stateRewardMap & stateMap, std::string & prefix)
-{
-	std::string fname = prefix + ".pomdp";
+	std::string pomdpFName = prefix + ".pomdp";
 	// remove pomdp file before writing it
-	remove(fname.c_str());
+	remove(pomdpFName.c_str());
 	FILE *fptr;
-	auto err = fopen_s(&fptr, fname.c_str(), "w");
+	auto err = fopen_s(&fptr, pomdpFName.c_str(), "w");
 	if (0 != err)
 	{
 		std::cout << "ERROR OPEN\n";
 		exit(1);
 	}
-
-	pomdp.SaveInFormat(fptr);
+	// write pomdp file
+	pomdp->SaveInPomdpFormat(fptr);
 	fclose(fptr);
-	std::cout << "for state: ";
-	for (auto v : state)
-		std::cout << v << ", ";
 
-	// create policy 
+	// print initial state
+	std::cout << "finished writing pomdp file\n";
+
+	// create policy and calculate duration of solver
 	std::string policyName = prefix + ".policy";
+	std::string solverOutFname = prefix + ".txt";
 	time_t solverStart = time(nullptr);
-	RunSolver(fname, policyName);
+	RunSolver(pomdpFName, policyName, solverOutFname);
 	time_t solverDuration = time(nullptr) - solverStart;
-	// find reward
-	RunEvaluator(fname, policyName);
 
-	std::vector<double> reward = ReadReward();
-	reward.push_back(solverDuration);
-
-	std::cout << "reward = " << reward[0] << " < " << reward[1] << ", " << reward[2] <<  ">  run time = "<< reward[3] << " ms\n\n";
 	
-	// insert pair to map and write pair to backup
-	stateMap.emplace(state, reward);
-	g_tmpBackupFile.write(reinterpret_cast<char *>(&state[0]), state.size() * sizeof(int));
-	g_tmpBackupFile.write(reinterpret_cast<char *>(&reward[0]), reward.size() * sizeof(double));
+	std::cout << "finished creating policy file\n";
+	// run simulator
+	RunSimulator(pomdpFName, policyName);
+	std::cout << "finished running simulator\n";
+	std::string sarsopDataFName = prefix + "_sarsopData.bin";
+	ReadReward(pomdp, sarsopMap, sarsopDataFName);
 }
 
-void TraverseRec(POMDP_Writer & pomdp, MapOfPomdp::intVec & state, identityVec & identity, MapOfPomdp::stateRewardMap & stateMap, int objIdx, std::string & prefix)
+void TraverseAllShelterLoc(nxnGridOffline * pomdp, std::vector<int> possibleShelterLoc, std::string & prefix, lutSarsop & sarsopMap)
 {
-	if (state.size() == objIdx)
+	int gridSize = pomdp->GetGridSize();
+
+	prefix += "S";
+	for (auto s : possibleShelterLoc)
 	{
-		// if the state is not already exist in the map insert it
-		if (stateMap.find(state) == stateMap.end())
-			LastRec(pomdp, state, stateMap, prefix);
-		else
-		{
-			g_tmpBackupFile.write(reinterpret_cast<char *>(&state[0]), state.size() * sizeof(int));
-			g_tmpBackupFile.write(reinterpret_cast<char *>(&stateMap[state][0]), stateMap[state].size() * sizeof(double));
-		}
+		Coordinate point(s % gridSize, s / gridSize);
+		pomdp->SetLocationShelter(point, pomdp->CountMovableObj());
 
-		return;
-	}
-
-	prefix.append(1, OBJECT_TO_STRING[identity[objIdx]]);;
-	Point point;
-
-	for (int i = 0; i < pomdp.GetGridSize() * pomdp.GetGridSize(); ++i)
-	{
-		state[objIdx] = i;
-		point.SetIdx(i, pomdp.GetGridSize());
-
-		if (NoRepeats(state, objIdx))
-		{
-			if (identity[objIdx] == POMDP_Writer::SELF)
-				pomdp.SetLocationSelf(point);
-			else if (identity[objIdx] == POMDP_Writer::ENEMY)
-				pomdp.SetLocationEnemy(point, objIdx);
-			else if (identity[objIdx] == POMDP_Writer::NON_INVOLVED)
-				pomdp.SetLocationNonInv(point, objIdx);
-			else
-				pomdp.SetLocationShelter(point, objIdx);
-
-			prefix += std::to_string(i);
-			TraverseRec(pomdp, state, identity, stateMap, objIdx + 1, prefix);
+		prefix += std::to_string(s);
+		CreateLUT(pomdp, prefix, sarsopMap);
+		prefix.pop_back();
+		if (s > 9)
 			prefix.pop_back();
-			if (i > 9)
-				prefix.pop_back();
-		}
-		else if (identity[objIdx] == POMDP_Writer::SHELTER) //allow repetitions for shelters
-		{
-			pomdp.SetLocationShelter(point, objIdx);
-			prefix += std::to_string(i);
-			TraverseRec(pomdp, state, identity, stateMap, objIdx + 1, prefix);
+		if (s > 99)
 			prefix.pop_back();
-			if (i > 9)
-				prefix.pop_back();
-		}
-	}
-	prefix.pop_back();
-}
-
-void TraverseAllOptions(POMDP_Writer & pomdp, MapOfPomdp::intVec & state, identityVec & identity, MapOfPomdp::stateRewardMap & stateMap, std::string & prefix)
-{
-	int gridSize = pomdp.GetGridSize();
-
-	// fixed target to be in the right corner
-	int target = gridSize * gridSize - 1;
-	pomdp.SetTarget(target);
-	TraverseRec(pomdp, state, identity, stateMap, 0, prefix);
-}
-
-void ReadBackupToMap(std::ifstream & readBackupFile, MapOfPomdp::stateRewardMap & stateMap, int stateSize)
-{
-	// read state reward pairs and insert them to map (until eof)
-	while (!readBackupFile.eof())
-	{
-		std::vector<int> state(stateSize);
-		readBackupFile.read(reinterpret_cast<char *>(&state[0]), state.size() * sizeof(int));
-		std::vector<double> reward(4);
-		readBackupFile.read(reinterpret_cast<char *>(&reward[0]), reward.size() * sizeof(double));
-		stateMap[state] = reward;
 	}
 }
-
-void WriteMapToBackup(std::vector<int> & KeyToMap, MapOfPomdp::stateRewardMap & stateMapstateMap)
-{
-	g_tmpBackupFile.write(reinterpret_cast<char *>(&KeyToMap[0]), KeyToMap.size() * sizeof(int));
-
-	std::for_each(stateMapstateMap.begin(), stateMapstateMap.end(), [](MapOfPomdp::stateRewardMap::const_reference itr)
-	{
-		g_tmpBackupFile.write(reinterpret_cast<const char *>(&itr.first[0]), itr.first.size() * sizeof(int));
-		g_tmpBackupFile.write(reinterpret_cast<const char *>(&itr.second[0]), itr.second.size() * sizeof(int));
-	});
-
-}
-
 
 int main()
-{	
-	InitPipe(&g_writePipe, &g_readPipe);
-
-	// load map
-	MapOfPomdp map;
-	std::ifstream readFile(DATAFILENAME, std::ifstream::in | std::ifstream::binary);
-	if (readFile.peek() != std::ifstream::traits_type::eof())
-	{
-		readFile >> map;
-		if (readFile.bad())
-		{
-			std::cerr << "Error reading file";
-			exit(1);
-		}
-		std::cout << map;
-	}
-
-	readFile.close();
-
-	// translate type to file name
-	OBJECT_TO_STRING = new char[4];
-	OBJECT_TO_STRING[POMDP_Writer::SELF] = 'M';
-	OBJECT_TO_STRING[POMDP_Writer::ENEMY] = 'E';
-	OBJECT_TO_STRING[POMDP_Writer::NON_INVOLVED] = 'N';
-	OBJECT_TO_STRING[POMDP_Writer::SHELTER] = 'S';
-
+{
 	// create model
-	int gridSize = 5;
-	// create identity vector for all objects
-	identityVec identity;
+	int gridSize = 10;
+	
+	Coordinate m(0, 0);
+	int target = gridSize * gridSize - 1;
 
-	POMDP_Writer pomdp(gridSize, 0, CreateSelf(gridSize));
-	identity.push_back(POMDP_Writer::SELF);
+	nxnGridOffline * model = nullptr;
 
+	if (s_UsingModel == NXN_LOCAL_ACTIONS)
+		model = new nxnGridOfflineLocalActions(gridSize, target, CreateSelf(gridSize, m), false);
+	else if (s_UsingModel == NXN_GLOBAL_ACTIONS)
+		model = new nxnGridOfflineGlobalActions(gridSize, target, CreateSelf(gridSize, m), false);
+	else
+	{
+		std::cout << "model not recognized... exiting!!\n";
+		exit(0);
+	}
+	
 	// ADD ENEMIES
-	pomdp.AddObj(CreateEnemy(gridSize));
-	identity.push_back(POMDP_Writer::ENEMY);
+	Coordinate e1(gridSize - 1, gridSize - 1);
+	model->AddObj(CreateEnemy(gridSize, e1));
+
+	//Coordinate e2(0, gridSize - 1);
+	//model->AddObj(CreateEnemy(gridSize, e2));
 
 	//ADD N_INV
-	//pomdp.AddObj(CreateNInv());
-	//identity.push_back(POMDP_Writer::NON_INVOLVED);
+	//Coordinate n(gridSize - 1, gridSize - 1);
+	//model.AddObj(CreateNInv(n));
 
 	//ADD SHELTERS
-	pomdp.AddObj(CreateShelter());
-	identity.push_back(POMDP_Writer::SHELTER);
+	Coordinate s(0, 0);
+	model->AddObj(CreateShelter(s));
 
-	// key to map of solutions
-	std::vector<int> KeyToMap(4);
-	KeyToMap[0] = gridSize;
-	KeyToMap[1] = pomdp.CountEnemies();
-	KeyToMap[2] = pomdp.CountNInv();
-	KeyToMap[3] = pomdp.CountShelters();
-	
-	MapOfPomdp::stateRewardMap stateMap;
-
-	// retrieve backup data
-	char a;
-	std::cout << "\n\n use backup file? (y for yes)\n";
-	std::cin >> a;
-	if (a == 'y')
-	{
-		std::ifstream readBackupFile(TMPFILENAME, std::ios::in | std::ios::binary);
-		// compare keys
-		std::vector<int> backupKey(4);
-		readBackupFile.read(reinterpret_cast<char *>(&backupKey[0]), backupKey.size() * sizeof(int));
-		if (backupKey == KeyToMap)
-		{
-			// read state reward map
-			ReadBackupToMap(readBackupFile, stateMap, 1 + backupKey[1] + backupKey[2] + backupKey[3]);
-			readBackupFile.close();
-		}
-		else
-		{
-			std::cout << "map is not identitical to backup file(press any key to exit)";
-			std::cin >> a;
-			exit(1);
-		}
-	}
-
-	std::remove(TMPFILENAME);
-	g_tmpBackupFile.open(TMPFILENAME, std::ios::out | std::ios::binary);
-	g_tmpBackupFile.write(reinterpret_cast<char *>(&KeyToMap[0]), KeyToMap.size() * sizeof(int));
+	// optional shelter loc
+	std::vector<int> shelterLoc{ 62,63,72,73 };
 
 	// create prefix for file name
 	std::string prefix = std::to_string(gridSize) + "x" + std::to_string(gridSize) + "Grid";
-	prefix += std::to_string(KeyToMap[1]) + "x" + std::to_string(KeyToMap[2]) + "x" + std::to_string(KeyToMap[3]);
+	prefix += std::to_string(model->CountEnemies()) + "x" + std::to_string(model->CountNInv()) + "x" + std::to_string(model->CountShelters());
 
-	// create key for reward (state + targetIdx)
-	MapOfPomdp::intVec state(pomdp.CountMovableObj() + pomdp.CountShelters());
+	std::string lutFName(prefix);
+	lutFName += "_LUT.bin";
+	lutSarsop sarsopMap;
+	
+	// create all format and solver options for the model
+	//if (0 != model->CountShelters())
+	//	TraverseAllShelterLoc(model, shelterLoc, prefix, sarsopMap);
+	//else
+	//	CreateLUT(model, prefix, sarsopMap);
 
-
-	TraverseAllOptions(pomdp, state, identity, stateMap, prefix);
-	delete[] OBJECT_TO_STRING;
-
-	map.Add(KeyToMap, stateMap);
-
-	std::cout << map;
-	if (g_tmpBackupFile.bad())
+	prefix += "S";
+	for (auto s : shelterLoc)
 	{
-		std::cerr << "backup file was not written successfully";
+		Coordinate point(s % gridSize, s / gridSize);
+		model->SetLocationShelter(point, model->CountMovableObj());
+		std::string sarsopDataFName = prefix + std::to_string(s) + "_sarsopData.bin";
+		ReadReward(model, sarsopMap, sarsopDataFName);
 	}
-	g_tmpBackupFile.close();
 
-	std::cout << "\n\nDo you want to save changes? (y for yes)\n";
-	char c;
-	std::cin >> c;
-	if (c == 'y')
+
+	// write map to lut
+	int numActions = model->GetNumActions();
+	std::ofstream lut(lutFName, std::ios::out | std::ios::binary);
+	int mapSize = sarsopMap.size();
+	lut.write((const char *)&mapSize, sizeof(int));
+	lut.write((const char *)&numActions, sizeof(int));
+	std::for_each(sarsopMap.begin(), sarsopMap.end(), [&lut](lutSarsop::const_reference itr)
 	{
-		// remove file abefore writing the map
-		std::remove(DATAFILENAME);
-		std::ofstream writeFile(DATAFILENAME, std::ios::out | std::ios::binary);
-		
-		if (writeFile.fail())
-			std::cerr << "Error opening file\n";
-		else
+		lut.write((const char *)&itr.first, sizeof(int));
+		for (auto reward : itr.second)
 		{
-			writeFile << map;
-			if (writeFile.bad())
-				std::cerr << "Write map to file failed\n";
-		}				
+			lut.write((const char *)&reward, sizeof(double));
+		}
+	});
 
-		std::cout << "\n\nMap saved successfuly\n";
+	std::string dest = "C:\\Users\\moshe\\Documents\\GitHub\\Despot\\" + lutFName;
+	std::string src = "C:\\Users\\moshe\\Documents\\GitHub\\Despot\\" + lutFName;
+
+	lut.close();
+	if (!MoveFile(src.c_str(), dest.c_str()))
+	{
+		std::cout << "failed moving lut to main directory\n";
+		std::cout << "press any key to exit";
+		char c;
 		std::cin >> c;
 	}
-
-	CloseHandle(g_readPipe);
-	CloseHandle(g_writePipe);
-
 }

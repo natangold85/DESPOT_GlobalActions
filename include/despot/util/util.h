@@ -9,7 +9,8 @@
 #include <math.h>
 #include <chrono>//###
 #include <locale>
-//#include <time.h>   #include <sys/time.h>
+//#include <time.h>   
+
 
 namespace despot {
 
@@ -107,7 +108,8 @@ std::vector<std::pair<K, V> > SortByKey(std::map<K, V> m) {
 
 //###
 // NOTE: disabled C++11 feature
-inline double get_time_second() {
+inline double get_time_second() 
+{
 	std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
 	std::chrono::system_clock::duration dtn = tp.time_since_epoch();
 	return ((double) dtn.count()) * std::chrono::system_clock::period::num

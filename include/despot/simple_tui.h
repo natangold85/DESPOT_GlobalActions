@@ -144,7 +144,7 @@ public:
   Solver* InitializeSolver(DSPOMDP* model, std::string solver_type,
                            option::Option* options);
 
-  int run(int argc, char* argv[]);
+  int run(int argc, char *argv[], std::ofstream & result, std::shared_ptr<std::ofstream> treeFile = NULL);
 
   void OptionParse(option::Option* options, int& num_runs,
                    std::string& simulator_type, std::string& belief_type, int& time_limit,
@@ -164,7 +164,7 @@ public:
                     clock_t main_clock_start, int start_run);
 
   void PrintResult(int num_runs, Evaluator* simulator,
-                   clock_t main_clock_start);
+				clock_t main_clock_start, std::string & result);
 
   std::vector<int> number_steps_termination_; // NATAN CHANGES
 };

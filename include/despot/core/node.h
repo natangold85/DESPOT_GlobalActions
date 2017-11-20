@@ -18,6 +18,7 @@ class QNode;
  * A belief/value/AND node in the search tree.
  */
 class VNode {
+	friend std::ofstream &operator<<(std::ofstream & out, const VNode & vnode); // NATAN CHANGES
 protected:
   std::vector<State*> particles_; // Used in DESPOT
 	Belief* belief_; // Used in AEMS
@@ -84,8 +85,9 @@ public:
 	void PrintPolicyTree(int depth = -1, std::ostream& os = std::cout);
 
 	int Height(); // NATAN CHANGES
-	double BalanceFactor(); // NATAN CHANGES
-
+	void LevelSize(std::vector<double> & DividedSize, int currLevel); // NATAN CHANGES
+	void LevelActionSize(std::vector<std::vector<double>> & DividedSize, int currLevel); // NATAN CHANGES
+	void PreferredActionPortion(std::vector<double> & portion, const std::vector<double> & sizes, int currLevel); // NATAN CHANGES
 	void Free(const DSPOMDP& model);
 };
 
@@ -97,6 +99,7 @@ public:
  * A Q-node/AND-node (child of a belief node) of the search tree.
  */
 class QNode {
+	friend std::ofstream &operator<<(std::ofstream & out, const QNode & qnode); // NATAN CHANGES
 protected:
 	VNode* parent_;
 	int edge_;

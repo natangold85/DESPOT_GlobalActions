@@ -1,3 +1,5 @@
+#include <fstream>      // std::ofstream NATAN CHANGES
+
 #include "../include/despot/simple_tui.h"
 
 #include "nxnGrid.h"
@@ -206,7 +208,7 @@ void SimpleTUI::RunEvaluator(DSPOMDP *model, Evaluator *simulator,
   for (int round = start_run; round < start_run + num_runs; round++) 
   {
 	  nxnGrid *m = static_cast<nxnGrid *>(model); //NATAN CHANGES (random initial condition)
-	  m->RandInitState();
+	  m->InitState();
     default_out << endl
                 << "####################################### Round " << round
                 << " #######################################" << endl;
@@ -242,6 +244,7 @@ void SimpleTUI::RunEvaluator(DSPOMDP *model, Evaluator *simulator,
     simulator->InitRound();
 	int i = 0;
 	simulator->ResizeTreeProp(num_runs); // NATAN CHANGES
+	Tree_Properties::ZeroCount();	// NATAN CHANGES
     for (; i < Globals::config.sim_len; i++) {
       /*
       default_out << "-----------------------------------Round " << round
@@ -267,19 +270,14 @@ void SimpleTUI::RunEvaluator(DSPOMDP *model, Evaluator *simulator,
     }
     default_out << "Simulation terminated in " << simulator->step() << " steps"
                 << endl;
-    double round_reward = simulator->EndRound();
 
-	// NATAN CHANGES
-	simulator->DevideTreeProp(round, i);
+	simulator->AvgTreeProp(round);
+    double round_reward = simulator->EndRound();
 
 	number_steps_termination_.emplace_back(i);
 	
 	// print avg reward
-	default_out << "Average Reward = " << simulator->AverageDiscountedRoundReward() << "\n";
-
-	//char c;
-	//default_out << "press any key to continue\n";
-	//std::cin >> c;
+	default_out << "Average Reward = " << simulator->AverageUndiscountedRoundReward() << "\n";
   }
 
   if (simulator_type == "ippc" && num_runs != 30) {
@@ -293,117 +291,134 @@ void SimpleTUI::RunEvaluator(DSPOMDP *model, Evaluator *simulator,
 }
 
 void SimpleTUI::PrintResult(int num_runs, Evaluator *simulator,
-                            clock_t main_clock_start) {
+                            clock_t main_clock_start, std::string & result) {
 
-	cout << "\nCompleted " << num_runs << " run(s)." << endl;
-	cout << "num steps for each run:\n";
-	for (auto v : number_steps_termination_)
-		cout << v << ", ";
-	cout << "\n\n";
-	cout << "\nAverage total discounted reward (stderr) = "
-		<< simulator->AverageDiscountedRoundReward() << " ("
-		<< simulator->StderrDiscountedRoundReward() << ")" << "\n\n";
-	cout << "Average total undiscounted reward (stderr) = "
-		<< simulator->AverageUndiscountedRoundReward() << " ("
-		<< simulator->StderrUndiscountedRoundReward() << ")" << "\n\n";
-	cout << "Total time: Real / CPU = "
-		<< (get_time_second() - EvalLog::curr_inst_start_time) << " / "
-		<< (double(clock() - main_clock_start) / CLOCKS_PER_SEC) << "s" << endl;
-
-	cout << "\n\n";
-	simulator->PrintTreeProp();
+	result += "\nCompleted " + std::to_string(num_runs) + " run(s).\n";
 	
+	// insert num steps to termination to buffer
+	result += "num steps for each run:\n";
+	for (auto v : number_steps_termination_)
+		result += std::to_string(v) + ", ";
+	result += "\n\n";
+	
+	// insert undiscounted reward to to buffer
+	result += "\nAverage total undiscounted reward (stderr) = "
+		+ std::to_string(simulator->AverageUndiscountedRoundReward()) + " ("
+		+ std::to_string(simulator->StderrUndiscountedRoundReward()) + ")" + "\n\n";
+	simulator->AddUnDiscounted2String(result);
+
+	// insert discounted reward to buffer
+	result += "\nAverage total discounted reward (stderr) = "
+		+ std::to_string(simulator->AverageDiscountedRoundReward()) + " ("
+		+ std::to_string(simulator->StderrDiscountedRoundReward()) + ")" + "\n\n";
+	simulator->AddDiscounted2String(result);
+
+	// insert time and tree properties to buffer
+	result += "Total time: Real / CPU = "
+		+ std::to_string(get_time_second() - EvalLog::curr_inst_start_time) + " / "
+		+ std::to_string(double(clock() - main_clock_start) / CLOCKS_PER_SEC) + "s\n\n";
+
+	simulator->PrintTreeProp(result);
 }
 
-int SimpleTUI::run(int argc, char *argv[]) {
+int SimpleTUI::run(int argc, char *argv[], std::ofstream & result, std::shared_ptr<std::ofstream> treeFile) {
 
-  clock_t main_clock_start = clock();
-  EvalLog::curr_inst_start_time = get_time_second();
+	clock_t main_clock_start = clock();
+	EvalLog::curr_inst_start_time = get_time_second();
 
-  const char *program = (argc > 0) ? argv[0] : "despot";
+	const char *program = (argc > 0) ? argv[0] : "despot";
 
-  argc -= (argc > 0);
-  argv += (argc > 0); // skip program name argv[0] if present
+	argc -= (argc > 0);
+	argv += (argc > 0); // skip program name argv[0] if present
 
-  option::Stats stats(usage, argc, argv);
-  option::Option *options = new option::Option[stats.options_max];
-  option::Option *buffer = new option::Option[stats.buffer_max];
-  option::Parser parse(usage, argc, argv, options, buffer);
+	option::Stats stats(usage, argc, argv);
+	option::Option *options = new option::Option[stats.options_max];
+	option::Option *buffer = new option::Option[stats.buffer_max];
+	option::Parser parse(usage, argc, argv, options, buffer);
 
-  string solver_type = "POMCP";
-  bool search_solver;
+	string solver_type = "POMCP";
+	bool search_solver;
 
-  /* =========================
-   * Parse required parameters
-   * =========================*/
-  int num_runs = 5000; // NATAN CHANGES SOLVER
-  string simulator_type = "pomdp";
-  string belief_type = "DEFAULT";
-  int time_limit = -1;
+	/* =========================
+	* Parse required parameters
+	* =========================*/
+	int num_runs = 100; // NATAN CHANGES SOLVER
+	string simulator_type = "pomdp";
+	string belief_type = "DEFAULT";
+	int time_limit = -1;
 
-  /* =========================================
-   * Problem specific default parameter values
-*=========================================*/
-  InitializeDefaultParameters();
+	/* =========================================
+	* Problem specific default parameter values
+	*=========================================*/
+	InitializeDefaultParameters();
 
-  /* =========================
-   * Parse optional parameters
-   * =========================*/
-  if (options[E_HELP]) {
-    cout << "Usage: " << program << " [options]" << endl;
-    option::printUsage(std::cout, usage);
-    return 0;
-  }
-  OptionParse(options, num_runs, simulator_type, belief_type, time_limit,
-              solver_type, search_solver);
+	/* =========================
+	* Parse optional parameters
+	* =========================*/
+	if (options[E_HELP]) {
+	cout << "Usage: " << program << " [options]" << endl;
+	option::printUsage(std::cout, usage);
+	return 0;
+	}
+	OptionParse(options, num_runs, simulator_type, belief_type, time_limit,
+				solver_type, search_solver);
 
-  /* =========================
-   * Global random generator
-   * =========================*/
-  Seeds::root_seed(Globals::config.root_seed);
-  unsigned world_seed = Seeds::Next();
-  unsigned seed = Seeds::Next();
-  Random::RANDOM = Random(seed);
+	/* =========================
+	* Global random generator
+	* =========================*/
+	Seeds::root_seed(Globals::config.root_seed);
+	unsigned world_seed = Seeds::Next();
+	unsigned seed = Seeds::Next();
+	Random::RANDOM = Random(seed);
 
-  /* =========================
-   * initialize model
-   * =========================*/
-  DSPOMDP *model = InitializeModel(options);
+	/* =========================
+	* initialize model
+	* =========================*/
+	DSPOMDP *model = InitializeModel(options);
 
-  /* =========================
-   * initialize solver
-   * =========================*/
-  Solver *solver = InitializeSolver(model, solver_type, options);
-  assert(solver != NULL);
+	/* =========================
+	* initialize solver
+	* =========================*/
+	Solver *solver = InitializeSolver(model, solver_type, options);
+	assert(solver != NULL);
 
-  /* =========================
-   * initialize simulator
-   * =========================*/
-  Evaluator *simulator = NULL;
-  InitializeEvaluator(simulator, options, model, solver, num_runs,
-                      main_clock_start, simulator_type, belief_type, time_limit,
-                      solver_type);
-  simulator->world_seed(world_seed);
+	/* =========================
+	* initialize simulator
+	* =========================*/
+	Evaluator *simulator = NULL;
+	InitializeEvaluator(simulator, options, model, solver, num_runs,
+						main_clock_start, simulator_type, belief_type, time_limit,
+						solver_type);
 
-  int start_run = 0;
+	simulator->InitTreeFile(treeFile);
+	simulator->world_seed(world_seed);
 
-  /* =========================
-   * Display parameters
-   * =========================*/
-  DisplayParameters(options, model);
+	int start_run = 0;
 
-  /* =========================
-   * run simulator
-   * =========================*/
-  RunEvaluator(model, simulator, options, num_runs, search_solver, solver,
-               simulator_type, main_clock_start, start_run);
+	/* =========================
+	* Display parameters
+	* =========================*/
+	DisplayParameters(options, model);
 
-  simulator->End();
+	/* =========================
+	* run simulator
+	* =========================*/
+	RunEvaluator(model, simulator, options, num_runs, search_solver, solver,
+				simulator_type, main_clock_start, start_run);
 
-  PrintResult(num_runs, simulator, main_clock_start);
-  char c;
-  std::cout << "\npress any key to continue\n";
-  std::cin >> c;
+	simulator->End();
+
+	std::string resultString;
+	PrintResult(num_runs, simulator, main_clock_start, resultString);
+  
+	// NATAN CHANGES
+	result << resultString;
+	if (result.bad())
+	{
+		std::cerr << "failed write result to file\nresults:\n";
+		std::cerr << resultString;
+		exit(1);
+	}
   return 0;
 }
 

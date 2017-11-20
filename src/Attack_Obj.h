@@ -1,4 +1,3 @@
-#pragma once
 #include <fstream>      // std::ofstream
 #include <memory>      // unique_ptr
 #include <vector>      // vector
@@ -8,38 +7,28 @@
 #include "Coordinate.h"
 #include "Attacks.h"
 
+#ifndef ATTACK_OBJ_H
+#define ATTACK_OBJ_H
+
 /// attack object on grid
 class Attack_Obj : public Movable_Obj
 {
 	using intVec = std::vector<int>;
 public:
 	explicit Attack_Obj() = default;
-	explicit Attack_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit);
+	explicit Attack_Obj(Coordinate& location, Move_Properties& movement, std::shared_ptr<Attack> attack);
 	virtual ~Attack_Obj() = default;
 	Attack_Obj(const Attack_Obj&) = default;
 	Attack_Obj& operator=(const Attack_Obj&) = default;
 
-	bool CalcEnemyAttackDESPOT(int selfLoc, int objectLoc, intVec & otherObj, intVec & shelterLoc, int gridSize, double & random) const
-											{ return m_attack->EnemyHitDESPOT(selfLoc, objectLoc, otherObj, shelterLoc, gridSize, random); };
+	// calculations of attacks
+	virtual void AttackOnline(int objLoc, int targetLoc, intVec & state, intVec & shelterLoc, int gridSize, double random) const;
+	virtual void AttackOffline(int objLoc, int targetLoc, intVec & state, intVec & shelters, int gridSize, Attack::shootOutcomes & result) const;
 
-	void CalcEnemyAttackSARSOP(intVec & state, intVec & shelters, int gridSize, double & pHit) const
-											{ m_attack->EnemyHitSARSOP(state, shelters, gridSize, pHit); };
-
-	///return if an object is in range of the attack rang
-	bool IsInRange(int location, int otherObjLocation, int gridSize) const 
-			{ return m_attack->IsInRange(location, otherObjLocation, gridSize); };
-	///return the range of the attack
-	double GetRange() const 
-			{ return m_attack->GetRange(); };
-	///return the prob to hit of the attack
-	double GetPHit() const 
-			{ return m_attack->GetPHit(); };
-	///write object to file
-	friend std::ofstream& operator<<(std::ofstream& out, const Attack_Obj& obj);
-	///read object from file
-	friend std::ifstream& operator>>(std::ifstream& in, Attack_Obj& obj);
+	Attack *GetAttack() const  { return m_attack.get(); };
 
 protected:
 	std::shared_ptr<Attack> m_attack;
 };
 
+# endif //ATTACK_OBJ_H

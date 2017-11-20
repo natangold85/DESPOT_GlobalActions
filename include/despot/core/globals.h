@@ -26,7 +26,9 @@
 
 namespace despot {
 
-typedef uint64_t OBS_TYPE;
+typedef int64_t OBS_TYPE;
+typedef int64_t STATE_TYPE;
+
 
 namespace Globals {
 extern const double NEG_INFTY;

@@ -6,7 +6,18 @@ Coordinate::Coordinate(int x, int y)
 {
 }
 
+Coordinate::Coordinate(std::pair<int, int> coord)
+: m_x(coord.first)
+, m_y(coord.second)
+{}
 
+Coordinate &Coordinate::operator=(std::pair<int, int> coord)
+{
+	m_x = coord.first;
+	m_y = coord.second;
+
+	return *this;
+}
 /// return min(a,b)
 inline int Min(int a, int b)
 {
@@ -129,7 +140,7 @@ bool Coordinate::operator!=(const Coordinate & a) const
 int Coordinate::Distance(const Coordinate & num) const
 {
 	int xDiff = m_x - num.m_x;
-	int yDiff = m_y - num.m_x;
+	int yDiff = m_y - num.m_y;
 	return xDiff * xDiff + yDiff * yDiff;
 }
 

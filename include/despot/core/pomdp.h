@@ -22,12 +22,12 @@ namespace despot {
  */
 class State: public MemoryObject {
 public:
-	int state_id;
+	STATE_TYPE state_id;
 	int scenario_id;
 	double weight;
 
 	State();
-	State(int _state_id, double weight);
+	State(STATE_TYPE _state_id, double weight);
 	virtual ~State();
 
 	friend std::ostream& operator<<(std::ostream& os, const State& state);
@@ -36,7 +36,7 @@ public:
 
 	static double Weight(const std::vector<State*>& particles);
 
-	State* operator()(int state_id, double weight) {
+	State* operator()(STATE_TYPE state_id, double weight) {
 		this->state_id = state_id;
 		this->weight = weight;
 		return this;
@@ -104,19 +104,19 @@ public:
 	 * Determistic simulative model for POMDP.
 	 */
 
-	virtual bool Step(State& state, double randomNums, int action,
+	virtual bool Step(State& state, double randomNums, int action, OBS_TYPE lastObs,
 		double& reward, OBS_TYPE& obs) const = 0;
 
 	/**
 	 * Override this to get speedup for LookaheadUpperBound.
 	 */
-	virtual bool Step(State& state, double random_num, int action,
+	virtual bool Step(State& state, double random_num, int action, OBS_TYPE lastObs,
 		double& reward) const;
 
 	/**
 	 * Simulative model for POMDP.
 	 */
-	virtual bool Step(State& state, int action, double& reward,
+	virtual bool Step(State& state, int action, OBS_TYPE lastObs, double& reward,
 		OBS_TYPE& obs) const;
 
 	/* ========================================================================
@@ -201,7 +201,7 @@ public:
 	/**
 	 * Allocate a state.
 	 */
-	virtual State* Allocate(int state_id = -1, double weight = 0) const = 0;
+	virtual State* Allocate(STATE_TYPE state_id = -1, double weight = 0) const = 0;
 
 	/**
 	 * Returns a copy of the state.

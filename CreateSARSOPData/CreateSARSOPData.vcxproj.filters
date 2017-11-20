@@ -30,19 +30,25 @@
     <ClCompile Include="..\src\ObjInGrid.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\Point.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\Self_Obj.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\MapOfPomdp.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\POMDP_Writer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="CreateSARSOP_Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Coordinate.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\nxnGridOffline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\nxnGridOfflineGlobalActions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\nxnGridOfflineLocalActions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Observations.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -62,16 +68,22 @@
     <ClInclude Include="..\src\ObjInGrid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\Point.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\Self_Obj.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\MapOfPomdp.h">
+    <ClInclude Include="..\src\Coordinate.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\POMDP_Writer.h">
+    <ClInclude Include="..\src\nxnGridOffline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\nxnGridOfflineGlobalActions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\nxnGridOfflineLocalActions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\Observations.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

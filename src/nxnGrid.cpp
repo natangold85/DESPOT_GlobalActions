@@ -1,6 +1,7 @@
 #include <string>
 #include <math.h>
 
+
 #include "..\include\despot\solver\pomcp.h"
 #include "nxnGrid.h"
 #include "Coordinate.h"
@@ -8,37 +9,51 @@
 namespace despot 
 {
 
-/// string array for all actions (enum as idx)
-static std::vector<std::string> ACTION_STR(nxnGrid::NUM_ACTIONS);
-
 /// changes surrounding a point
 static const int s_numMoves = 8;
 static const int s_lutDirections[s_numMoves][2] = { { 0,1 },{ 0,-1 },{ 1,0 },{ -1,0 },{ 1,1 },{ 1,-1 },{ -1,1 },{ -1,-1 } };
+
+/// second square changes surrounding the point
+static const int s_numPixelsSecondSquare = 16;
+static const int s_lutSecondSquare[s_numPixelsSecondSquare][2] = { { 0, 2 }, { 0, -2 }, { 2, 0 }, { -2, 0 },
+																{ 1, 2 }, { 1, -2 }, { 2, 1 }, { -2, 1 },
+																{ -1, 2 }, { -1, -2 }, { 2, -1 }, { -2, -1 },															
+																{ 2, 2 }, { 2, -2 }, { -2, 2 }, { -2, -2 } };
 
 
 // init static members
 
 int nxnGridState::s_sizeState = 1;
-int nxnGridState::s_endEnemyIdx = 1;
+int nxnGridState::s_numEnemies = 1;
 
 int nxnGridState::s_gridSize = 0;
-int nxnGridState::s_targetIdx = 0;
+int nxnGridState::s_targetLoc = 0;
 
-std::vector<ObjInGrid> nxnGridState::s_shelters;
+std::vector<int> nxnGridState::s_shelters;
+
+
+int nxnGrid::s_numBasicActions = -1;
+int nxnGrid::s_numEnemyRelatedActions = -1;
+
+std::vector<nxnGrid::intVec> nxnGrid::s_objectsInitLocations;
+UDP_Server nxnGrid::s_udpServer;
 
 const double nxnGrid::REWARD_WIN = 50.0;
 const double nxnGrid::REWARD_LOSS = -100.0;
 const double nxnGrid::REWARD_KILL_ENEMY = 0.0;
 const double nxnGrid::REWARD_KILL_NINV = REWARD_LOSS;
+const double nxnGrid::REWARD_ILLEGAL_MOVE = 0;
+
+// for lut
+nxnGrid::lut_t nxnGrid::s_LUT;
+int nxnGrid::s_lutGridSize;
+enum nxnGrid::MODEL_TYPE nxnGrid::s_modelType = nxnGrid::ONLINE;
+enum nxnGrid::CALCULATION_TYPE nxnGrid::s_calculationType = nxnGrid::WITHOUT;
 
 // for synchronizing between sarsop rewards to despot rewards
 static double REWARD_WIN_MAP = 1.0; 
 static double REWARD_LOSS_MAP = -2.0;
-enum nxnGrid::CALCULATION_TYPE nxnGrid::s_calculationType = WITHOUT;
 
-/// observation for loss and win (does not important)
-static int OB_LOSS = 0;
-static int OB_WIN = 0;
 
 /* =============================================================================
 * inline Functions
@@ -75,33 +90,25 @@ inline int Distance(int a, int b, int gridSize)
 * nxnGridState Functions
 * =============================================================================*/
 
-nxnGridState::nxnGridState(int state_id, double weight)
+nxnGridState::nxnGridState(STATE_TYPE state_id, double weight)
 	: State(state_id, weight)
 {
 }
 
 std::string nxnGridState::text() const
 {
-	intVec state = IdxToState(state_id);
-	std::string ret = "\n";
+	intVec state;
+	IdxToState(state_id, state);
+	std::string ret = "(";
+	for (auto v : state)
+		ret += std::to_string(v) + ", ";
+	ret += ")\n";
 	for (int y = 0; y < s_gridSize; ++y)
 	{
 		for (int x = 0; x < s_gridSize; ++x)
 		{
 			int loc = x + y * s_gridSize;
-			// print object or target at location
-			if (state[0] == loc)
-				ret += "M";
-			else if (EnemyLoc(state, loc))
-				ret += "E";
-			else if (NInvLoc(state, loc))
-				ret += "N";
-			else if (loc == s_targetIdx)
-				ret += "T";
-			else if (ShelterLoc(loc))
-				ret += "S";
-			else
-				ret += "_";
+			ret += ObjIdentity(state, loc);
 		}
 		ret += "\n";
 	}
@@ -109,7 +116,7 @@ std::string nxnGridState::text() const
 	return ret;
 }
 
-void nxnGridState::UpdateState(int newStateIdx)
+void nxnGridState::UpdateState(STATE_TYPE newStateIdx)
 {
 	state_id = newStateIdx;
 }
@@ -119,26 +126,36 @@ void nxnGridState::UpdateState(intVec newState)
 	state_id = StateToIdx(newState);
 }
 
-intVec nxnGridState::IdxToState(int idx)
+void nxnGridState::InitStatic()
 {
-	intVec state(s_sizeState);
+	s_sizeState = 1;
+	s_numEnemies = 0;
+	s_gridSize = 0;
+	s_shelters.resize(0);
+}
+void nxnGridState::IdxToState(STATE_TYPE idx, intVec & stateVec)
+{
+	stateVec.resize(s_sizeState);
 	int numStates = s_gridSize * s_gridSize + 1;
 
 	// running on all varied objects and concluding from the obs num the observed state
 	for (int i = s_sizeState - 1; i >= 0; --i)
 	{
-		state[i] = idx % numStates;
+		stateVec[i] = idx % numStates;
 		idx /= numStates;
 	}
-
-	return state;
 }
 
-int nxnGridState::StateToIdx(intVec &state)
+STATE_TYPE nxnGridState::StateToIdx(const intVec &state)
 {
-	int idx = 0;
+	return StateToIdx(state, s_gridSize);
+}
+
+STATE_TYPE nxnGridState::StateToIdx(const intVec &state, int gridSize)
+{
+	STATE_TYPE idx = 0;
 	// add 1 for num states for dead objects
-	int numStates = s_gridSize * s_gridSize + 1;
+	int numStates = gridSize * gridSize + 1;
 	// idx = s[0] * numstates^n + s[1] * numstates^(n - 1) ...  + s[n] * numstates^(0)
 	for (int i = 0; i < state.size(); ++i)
 	{
@@ -149,225 +166,294 @@ int nxnGridState::StateToIdx(intVec &state)
 	return idx;
 }
 
-int nxnGridState::MaxState()
+STATE_TYPE nxnGridState::MaxState()
 {
 	int numStates = s_gridSize * s_gridSize + 1;
 
 	return pow(numStates, s_sizeState);
 }
 
-bool nxnGridState::EnemyLoc(intVec & state, int location) const
+char nxnGridState::ObjIdentity(intVec & state, int location)
 {
-	for (int i = 1; i < s_endEnemyIdx; ++i)
-	{
-		if (state[i] == location)
-			return true;
-	}
-	return false;
-}
+	if (state[0] == location)
+		return 'M';
 
-bool nxnGridState::NInvLoc(intVec & state, int location) const
-{
-	for (int i = s_endEnemyIdx; i < state.size(); ++i)
+	int o = 1;
+	
+	for (; o < s_numEnemies + 1; ++o)
 	{
-		if (state[i] == location)
-			return true;
-	}
-	return false;
-}
-
-bool nxnGridState::ShelterLoc(int location) const
-{
-	for (auto v : s_shelters)
-	{
-		if (location == v.GetLocation().GetIdx(s_gridSize))
-			return true;
+		if (state[o] == location)
+			return o + '0';
 	}
 
-	return false;
+	for (; o < state.size(); ++o)
+	{
+		if (state[o] == location)
+			return 'N';
+	}
+
+	int s = 0;
+	for (; s < s_shelters.size(); ++s)
+	{
+		if (location == s_shelters[s])
+			return 'S';
+	}
+
+	if (location == s_targetLoc)
+		return 'T';
+
+	return '_';
 }
 
 /* =============================================================================
 * nxnGrid Functions
 * =============================================================================*/
 
-nxnGrid::nxnGrid(int gridSize, int target, Self_Obj & self, std::shared_ptr<StateActionLUT> lut, enum CALCULATION_TYPE calcType)
+nxnGrid::nxnGrid(int gridSize, int target, Self_Obj & self, std::vector<intVec> & objectsInitLoc)
 	: m_gridSize(gridSize)
 	, m_targetIdx(target)
 	, m_self(self)
 	, m_enemyVec()
 	, m_shelters()
 	, m_nonInvolvedVec()
-	, m_LUT(lut)
 {
 	// init size  of state for nxnGridstate
 	nxnGridState::s_sizeState = 1;
 	nxnGridState::s_gridSize = gridSize;
-	nxnGridState::s_targetIdx = target;
+	nxnGridState::s_targetLoc = target;
 
-	// init vector for string of actions
-	ACTION_STR[MOVE_TO_TARGET] = "Move To Target";
-	ACTION_STR[MOVE_TO_SHELTER] = "Move To Shelter";
-	ACTION_STR[ATTACK] = "Attack";
-	ACTION_STR[MOVE_FROM_ENEMY] = "Move From Enemy";
+	s_objectsInitLocations = objectsInitLoc;
+}
 
-	s_calculationType = calcType;
+bool nxnGrid::InitUDP(int portNum)
+{
+	bool stat;
+	if (portNum < 0)
+		stat = s_udpServer.Init();
+	else
+		stat = s_udpServer.Init(portNum);
+
+	std::cout << "udp connection initialized\n";
+
+	return stat;
+}
+
+void nxnGrid::InitLUT(lut_t & offlineLut, int offlineGridSize, MODEL_TYPE mType,CALCULATION_TYPE ctype)
+{
+	s_modelType = mType;
+	s_calculationType = ctype;
+	s_lutGridSize = offlineGridSize;
+	s_LUT = offlineLut;
 }
 
 void nxnGrid::AddObj(Attack_Obj&& obj)
 {
 	m_enemyVec.emplace_back(std::forward<Attack_Obj>(obj));
-	++nxnGridState::s_sizeState;
-	++nxnGridState::s_endEnemyIdx;
+	nxnGridState::s_sizeState = 1 + m_enemyVec.size() + m_nonInvolvedVec.size();
+	nxnGridState::s_numEnemies = m_enemyVec.size();
+
+	AddActionsToEnemy();
 }
 
 void nxnGrid::AddObj(Movable_Obj&& obj)
 {
 	m_nonInvolvedVec.emplace_back(std::forward<Movable_Obj>(obj));
-	++nxnGridState::s_sizeState;
+	nxnGridState::s_sizeState = 1 + m_enemyVec.size() + m_nonInvolvedVec.size();
 }
 
 void nxnGrid::AddObj(ObjInGrid&& obj)
 {
 	m_shelters.emplace_back(std::forward<ObjInGrid>(obj));
-	nxnGridState::s_shelters.emplace_back(std::forward<ObjInGrid>(obj));
+	nxnGridState::s_shelters.emplace_back(obj.GetLocation().GetIdx(m_gridSize));
+	
+	AddActionsToShelter();
 }
 
 
 
 int nxnGrid::GetObsLoc(OBS_TYPE obs, int objIdx) const
 {
-	const intVec obsState = nxnGridState::IdxToState(obs);
+	intVec obsState;
+	nxnGridState::IdxToState(obs, obsState);
 
 	return obsState[objIdx];
 }
 
-bool nxnGrid::InObsRange(OBS_TYPE obs, int objIdx) const
-{
-	const intVec obsState = nxnGridState::IdxToState(obs);
-
-	return InRange(obsState[0], obsState[objIdx], m_self.GetRangeObs(), m_gridSize);
-}
-
-bool nxnGrid::Step(State& s, double randomSelfAction, int a, double& reward, OBS_TYPE& obs) const
-{
-	nxnGridState& stateClass = static_cast<nxnGridState&>(s);
-	intVec state = stateClass.IdxToState(stateClass);
-	enum ACTION action = static_cast<enum ACTION>(a);
-
-	// drawing more random numbers for each variable
-	double randomSelfObservation = rand();
-	randomSelfObservation /= RAND_MAX;
-
-	std::vector<double> randomObjectMoves = CreateRandomVec(CountMovingObjects() - 1);
-	std::vector<double> randomEnemiesAttacks = CreateRandomVec(m_enemyVec.size());
-
-	// run on all enemies and check if the robot was killed
-	for (int i = 0; i < m_enemyVec.size(); ++i)
-	{
-		if (CalcIfDead(i, state, randomEnemiesAttacks[i]))
-		{
-			reward = REWARD_LOSS;
-			return true;
-		}
-	}
-
-	// if we are at the target end game with a win
-	if (m_targetIdx == state[0])
-	{	
-		reward = REWARD_WIN;
-		return true;
-	}
-
-	reward = 0.0;
-	// run on actions
-	if (action == MOVE_TO_TARGET)
-	{
-		MoveToTarget(state, randomSelfAction);
-	}
-	else if(action == MOVE_TO_SHELTER)
-	{
-		// change location of robot if possible according to action
-		MoveToShelter(state, randomSelfAction);
-	}
-	else if (action == ATTACK)
-	{
-		if (state[1] != m_gridSize * m_gridSize)
-		{
-			Attack(state, randomSelfAction);
-			for (size_t i = 0; i < m_nonInvolvedVec.size(); ++i)
-			{
-				if (state[i + 1 + m_enemyVec.size()] == m_gridSize * m_gridSize)
-				{
-					reward = REWARD_KILL_NINV;
-					return true;
-				}
-			}
-			reward = REWARD_KILL_ENEMY * (state[1] == m_gridSize * m_gridSize);
-		}
-	}
-	else // action = movefromenemy
-	{
-		MoveFromEnemy(state, randomSelfAction);
-	}
-
-	// set next position of the objects on grid
-	SetNextPosition(state, randomObjectMoves);
-	// update observation
-	obs = FindObservation(state, randomSelfObservation);
-	//update state
-	stateClass.UpdateState(state);
-	return false;
-}
-
-int nxnGrid::NumStates() const
-{
-	int numStateForObj = m_gridSize * m_gridSize;
-
-	return pow(numStateForObj, CountMovingObjects());
-}
-
 double nxnGrid::ObsProb(OBS_TYPE obs, const State & s, int action) const
 {
-	const nxnGridState& stateIdx = static_cast<const nxnGridState&>(s);
-	intVec state = nxnGridState::IdxToState(stateIdx);
+	intVec state;
+	nxnGridState::IdxToState(&s, state);
 
-	const intVec obsState = nxnGridState::IdxToState(obs);
+	intVec obsState;
+	nxnGridState::IdxToState(obs, obsState);
+
 	// if observation is not including the location of the robot return 0
 	if (state[0] != obsState[0])
-	{
 		return 0.0;
-	}
 
 	double pObs = 1.0;
-	double pNear = (1.0 - m_self.GetPObs()) / 8;
-
 	// run on all non-self objects location
 	for (int i = 1; i < CountMovingObjects(); ++i)
 	{
-		// if the object is dead we have 1.0 prob to know it, if not decrease num possible locations by 1
-		if (state[i] == m_gridSize * m_gridSize)
-			continue;
-
-		// if the location is in range of the obs_range of the robot
-		if (InRange(state[0], state[i], m_self.GetRangeObs(), m_gridSize))
+		// create possible observation of obj location
+		intVec observableLocations;
+		m_self.GetObservation()->InitObsAvailableLocations(state[0], state[i], state, m_gridSize, observableLocations);
+		
+		// run on possible observable location
+		bool isObserved = false;
+		for (auto obsLoc : observableLocations)
 		{
-			//if the location of the observation is equal to the location of the object multiply p by p(ToObserve)
-			if (state[i] == obsState[i])
+			if (obsLoc == obsState[i])
 			{
-				pObs *= m_self.GetPObs();
+				pObs *= m_self.GetObservation()->GetProbObservation(state[0], state[i], m_gridSize, obsLoc);
+				isObserved = true;
 			}
-			else if (IsNear(state[i], obsState[i], m_gridSize))	//else if the location is near the real place multiply by pNear
-			{
-				pObs *= pNear;
-			}
-			else // if the observed location is not near the real location pObs = 0.0
-				return 0.0;
-			
 		}
+		
+		// if the object is not in observable locations return 0
+		if (!isObserved)
+			return 0.0;
 	}
 	
 	return pObs;
+}
+
+double nxnGrid::ObsProbOneObj(OBS_TYPE obs, const State & s, int action, int objIdx) const
+{
+	intVec state;
+	nxnGridState::IdxToState(&s, state);
+
+	intVec obsState;
+	nxnGridState::IdxToState(obs, obsState);
+
+	if (objIdx == 0)
+		return state[0] == obsState[0];
+
+	double pObs = 0.0;
+
+	// create possible observation of obj location
+	intVec observableLocations;
+	m_self.GetObservation()->InitObsAvailableLocations(state[0], state[objIdx], state, m_gridSize, observableLocations);
+
+	// run on possible observable location
+	for (auto obsLoc : observableLocations)
+	{
+		if (obsLoc == obsState[objIdx])
+			return m_self.GetObservation()->GetProbObservation(state[0], state[objIdx], m_gridSize, obsLoc);
+	}
+
+	return 0.0;
+}
+
+void nxnGrid::CreateParticleVec(std::vector<std::vector<std::pair<int, double> > > & objLocations, std::vector<State*> & particles) const
+{
+	intVec state(CountMovingObjects());
+	CreateParticleVecRec(state, objLocations, particles, 1.0, 0);
+}
+
+int nxnGrid::ChoosePreferredActionIMP(intVec & beliefState, double & expectedReward) const
+{
+	int action = 0;
+	expectedReward = -100;
+	lut_t::iterator itr;
+
+	if (s_calculationType == ALL)
+	{
+		intVec scaledState(beliefState.size());
+		ScaleState(beliefState, scaledState);
+		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
+		if (itr != s_LUT.end())
+			action = FindMaxReward(itr->second, expectedReward);
+	}
+	else if (s_calculationType == WO_NINV)
+	{
+		// erase all non involved
+		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
+			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
+
+		intVec scaledState(beliefState.size());
+		ScaleState(beliefState, scaledState);
+		STATE_TYPE idx = nxnGridState::StateToIdx(scaledState, s_lutGridSize);
+		itr = s_LUT.find(idx);
+		if (itr != s_LUT.end())
+			action = FindMaxReward(itr->second, expectedReward);
+	}
+	else if (s_calculationType == JUST_ENEMY)
+	{
+		// erase all non involved
+		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
+			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
+		// erase all shelters
+		for (int i = 0; i < m_shelters.size(); ++i)
+			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
+
+		intVec scaledState(beliefState.size());
+		ScaleState(beliefState, scaledState);
+		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
+		if (itr != s_LUT.end())
+			action = FindMaxReward(itr->second, expectedReward);
+	}
+	else if (s_calculationType == ONE_ENEMY)
+	{
+		assert(m_enemyVec.size() >= 2);
+
+		// erase all non involved
+		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
+			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
+
+		// calculate reward without second enemy
+		intVec firstE(beliefState);
+		firstE.erase(firstE.begin() + 1 + 1);
+
+		intVec scaledStateE1(firstE.size());
+		ScaleState(firstE, scaledStateE1);
+		lut_t::iterator itrE1 = s_LUT.find(nxnGridState::StateToIdx(scaledStateE1, s_lutGridSize));
+
+		intVec secondE(beliefState);
+		secondE.erase(secondE.begin() + 1);
+
+		intVec scaledStateE2(secondE.size());
+		ScaleState(secondE, scaledStateE2);
+		lut_t::iterator itrE2 = s_LUT.find(nxnGridState::StateToIdx(scaledStateE2, s_lutGridSize));
+
+		if (itrE2 != s_LUT.end())
+			action = FindMaxReward(itrE1->second, itrE2->second, expectedReward);
+	}
+	else if (s_calculationType == WO_NINV_STUPID)
+	{
+		beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
+		intVec scaledState(beliefState.size());
+		ScaleState(beliefState, scaledState);
+		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
+		if (itr != s_LUT.end())
+			action = FindMaxReward(itr->second, expectedReward);
+		return (action + 1) % NumActions();
+
+	}
+	else // calc type = WITHOUT
+	{
+		expectedReward = REWARD_LOSS;
+		return rand() % NumActions();
+	}
+
+	return action;
+}
+
+void nxnGrid::CreateParticleVecRec(intVec & state, std::vector<std::vector<std::pair<int, double> > > & objLocations, std::vector<State*> & particles, double weight, int currIdx) const
+{
+	if (currIdx == state.size())
+	{
+		auto beliefState = static_cast<nxnGridState*>(Allocate(nxnGridState::StateToIdx(state), weight));
+		particles.push_back(beliefState);
+	}
+	else
+	{
+		for (auto loc : objLocations[currIdx])
+		{
+			state[currIdx] = loc.first;
+			CreateParticleVecRec(state, objLocations, particles, weight * loc.second, currIdx + 1);
+		}
+	}
 }
 
 State * nxnGrid::CreateStartState(std::string type) const
@@ -393,12 +479,19 @@ Belief * nxnGrid::InitialBelief(const State * start, std::string type) const
 
 	// create belief states given self location
 	state[0] = m_self.GetLocation().GetIdx(m_gridSize);
-	InsertParticlesRec(state, particles, 1.0, 1);
+	int numStates = 1;
+	// assumption : init states cannot be in same locations for different object
+	for (int i = 1; i < CountMovingObjects(); ++i)
+		numStates *= s_objectsInitLocations[i].size();
+
+	double stateProb = 1.0 / numStates;
+	
+	InitialBeliefStateRec(state, 1, stateProb, particles);
 
 	return new ParticleBelief(particles, this);
 }
 
-State * nxnGrid::Allocate(int state_id, double weight) const
+State * nxnGrid::Allocate(STATE_TYPE state_id, double weight) const
 {
 	nxnGridState* particle = memory_pool_.Allocate();
 	particle->state_id = state_id;
@@ -427,7 +520,7 @@ int nxnGrid::NumActiveParticles() const
 void nxnGrid::PrintState(const State & s, std::ostream & out) const
 {
 	const nxnGridState& state = static_cast<const nxnGridState&>(s);
-	out << state.text() << std::endl;
+	out << state.text() << "\n";
 }
 
 void nxnGrid::PrintBelief(const Belief & belief, std::ostream & out) const
@@ -436,157 +529,9 @@ void nxnGrid::PrintBelief(const Belief & belief, std::ostream & out) const
 
 void nxnGrid::PrintObs(const State & state, OBS_TYPE obs, std::ostream & out) const
 {
-	intVec obsState = nxnGridState::IdxToState(obs);
-	out << "O: ";
-	for (auto v : obsState)
-	{
-		out << v << ",";
-	}
-	out << "\n";
+	nxnGridState obsState(obs);
+	out << obsState.text() << "\n";
 }
-
-void nxnGrid::PrintAction(int action, std::ostream & out) const
-{
-	out << ACTION_STR[action] << std::endl;
-}
-
-void nxnGrid::MoveToTarget(intVec & state, double random) const
-{
-	Coordinate target(m_targetIdx % m_gridSize, m_targetIdx / m_gridSize);
-	MoveToLocation(state, target, random);
-}
-
-void nxnGrid::MoveToShelter(intVec & state, double random) const
-{
-	int shelterLoc = m_shelters[0].GetLocation().GetIdx(m_gridSize);
-	
-	if (shelterLoc != state[0])
-	{
-		Coordinate shelter(shelterLoc % m_gridSize, shelterLoc / m_gridSize);
-		MoveToLocation(state, shelter, random);
-	}
-}
-
-void nxnGrid::Attack(intVec & state, double random) const
-{
-	// if the enemy is already dead do nothing
-	if (state[1] == m_gridSize * m_gridSize)
-		return;
-
-	if (InRange(state[0], state[1], m_self.GetRange(), m_gridSize))
-	{
-		intVec shelters(m_shelters.size());
-		for (size_t i = 0; i < m_shelters.size(); ++i)
-			shelters[i] = m_shelters[i].GetLocation().GetIdx(m_gridSize);
-
-		m_self.CalcSelfAttackDESPOT(state, shelters, m_gridSize, random);
-	}
-	else
-	{
-		Coordinate enemy(state[1] % m_gridSize, state[1] / m_gridSize);
-		MoveToLocation(state, enemy, random);
-	}
-}
-
-void nxnGrid::MoveFromEnemy(intVec & state, double random) const
-{
-	// if according to probability the robot is moving and the enemy is not dead move toward enemy
-	if (random < m_self.GetSelfPMove() & state[1] != m_gridSize * m_gridSize)
-	{
-		Coordinate enemy(state[1] % m_gridSize, state[1] / m_gridSize);
-		state[0] = MoveFromLocation(state, enemy);
-	}
-}
-
-void nxnGrid::MoveToLocation(intVec & state, Coordinate & goTo, double random) const
-{
-	int move = MoveToLocationIMP(state, goTo);
-
-	random -= m_self.GetMovement().GetToward();
-	if (random <= 0)
-		state[0] = move;	
-}
-
-int nxnGrid::MoveFromLocation(intVec & state, Coordinate & goFrom) const
-{
-	Coordinate self(state[0] % m_gridSize, state[0] / m_gridSize);
-
-	int maxLocation = state[0];
-	int maxDist = self.Distance(goFrom);
-
-	// run on all possible move locations and find the farthest point from goFrom
-	for (size_t i = 0; i < s_numMoves; ++i)
-	{
-		Coordinate move(state[0] % m_gridSize, state[0] / m_gridSize);
-		move.X() += s_lutDirections[i][0];
-		move.Y() += s_lutDirections[i][1];
-
-		// if move is not on grid continue for next move
-		if (move.X() < 0 | move.X() >= m_gridSize | move.Y() < 0 | move.Y() >= m_gridSize)
-			continue;
-
-		// if move is valid calculate distance
-		int currLocation = move.X() + move.Y() * m_gridSize;
-		if (ValidLocation(state, currLocation))
-		{
-			int currDist = goFrom.Distance(move);
-			if (currDist > maxDist)
-			{
-				maxLocation = currLocation;
-				maxDist = currDist;
-			}
-		}
-	}
-
-	return maxLocation;
-}
-
-
-int nxnGrid::MoveToLocationIMP(intVec & state, Coordinate & goTo) const
-{
-	int selfLocation = state[0];
-	int goToLocation = goTo.X() + goTo.Y() * m_gridSize;
-	int move = selfLocation;
-
-	int xDiff = goTo.X() - selfLocation % m_gridSize;
-	int yDiff = goTo.Y() - selfLocation / m_gridSize;
-
-	int changeToInsertX = xDiff != 0 ? xDiff / Abs(xDiff) : 0;
-	int changeToInsertY = yDiff != 0 ? (yDiff / Abs(yDiff)) * m_gridSize : 0;
-
-	// insert to move the best valid option
-
-	// if the best move is valid return it
-	move += changeToInsertX + changeToInsertY;
-	if (ValidLocation(state, move))
-		return move;
-
-	// if the best move is not availabe compute the new best move and the second best move according to the distance between the available moves
-
-	int secondMove;
-	changeToInsertX += selfLocation;
-	changeToInsertY += selfLocation;
-	if (Distance(goToLocation, changeToInsertX, m_gridSize) > Distance(goToLocation, changeToInsertY, m_gridSize))
-	{
-		move = changeToInsertY;
-		secondMove = changeToInsertX;
-	}
-	else
-	{
-		move = changeToInsertX;
-		secondMove = changeToInsertY;
-	}
-
-	// return the best valid move
-	if (ValidLocation(state, move))
-		return move;
-	else if (ValidLocation(state, secondMove))
-		return secondMove;
-
-	// if any move wasn't succesful return self location as no move
-	return selfLocation;
-}
-
 
 bool nxnGrid::InRange(int locationSelf, int locationObj, double range, int gridSize)
 {
@@ -603,10 +548,28 @@ bool nxnGrid::CalcIfDead(int enemyIdx, intVec state, double & randomNum) const
 
 	for (size_t i = 0; i < shelters.size(); ++i)
 		shelters[i] = m_shelters[i].GetLocation().GetIdx(m_gridSize);
+	
+	m_enemyVec[enemyIdx].AttackOnline(state[enemyIdx + 1], state[0], state, shelters, m_gridSize, randomNum);
 
-	return m_enemyVec[enemyIdx].CalcEnemyAttackDESPOT(state[0], state[enemyIdx + 1], state, shelters, m_gridSize, randomNum);
+	return state[0] == m_gridSize * m_gridSize;
 }
 
+void nxnGrid::MoveNonProtectedShelters(const intVec & beliefState, intVec & scaledState, int newGridSize) const
+{
+	int startShelter = 1 + NumEnemiesInCalc() + NumNonInvInCalc();
+	for (int s = 0; s < m_shelters.size(); ++s)
+	{
+		int shelterIdx = s + startShelter;
+		
+		for (int o = 0; o < startShelter; ++o)
+		{
+			if ((scaledState[o] == scaledState[shelterIdx]) & (beliefState[o] != beliefState[shelterIdx] & scaledState[o] != newGridSize * newGridSize))
+			{
+				MoveObjectLocation(beliefState, scaledState, o, newGridSize);
+			}
+		}
+	}
+}
 
 void nxnGrid::MoveObjectLocation(const intVec & beliefState, intVec & scaledState, int objIdx, int gridSize) const
 {
@@ -633,23 +596,8 @@ void nxnGrid::MoveObjectLocation(const intVec & beliefState, intVec & scaledStat
 			}
 		}
 	}
-
-	scaledState[objIdx] += s_lutDirections[bestLocation][0] + s_lutDirections[bestLocation][1] * gridSize;
-
-	int shelterIdx = 1 + m_enemyVec.size() + m_nonInvolvedVec.size();
-	// if the object is not enemy or if the self is not sheltered don't need to change shelter location
-	if (objIdx > m_enemyVec.size() | scaledState[0] != scaledState[shelterIdx])
-		return;
-
-	// assumption : 1 shelter
-	// if the enemy is closer to shelter move it to the new enemy location
 	
-	int distSelf = Distance(beliefState[0], beliefState[shelterIdx], m_gridSize);
-	int distEnemy = Distance(beliefState[1], beliefState[shelterIdx], m_gridSize);
-	if (distEnemy < distSelf)
-	{
-		scaledState[shelterIdx] = scaledState[1];
-	}
+	// TODO: see whats happenning to shelter after the moving of the object
 }
 
 void nxnGrid::ShiftSelfFromTarget(const intVec & beliefState, intVec & scaledState, int gridSize) const
@@ -691,6 +639,15 @@ void nxnGrid::ShiftSelfFromTarget(const intVec & beliefState, intVec & scaledSta
 			}
 		}
 	}
+
+	// if enemy is out of grid drop all other objects
+	if (scaledState[1] == gridSize * gridSize)
+	{
+		for (int i = 2; i < scaledState.size(); ++i)
+		{
+			scaledState[i] = gridSize * gridSize;
+		}
+	}
 }
 
 void nxnGrid::DropUnProtectedShelter(intVec & state, int gridSize) const
@@ -705,6 +662,19 @@ void nxnGrid::DropUnProtectedShelter(intVec & state, int gridSize) const
 	if (!isProtected)
 		state[shelterIdx] = gridSize * gridSize;
 }
+
+int nxnGrid::NumEnemiesInCalc() const
+{
+	// TODO : make this function more modular
+	return m_enemyVec.size() * (s_calculationType == WO_NINV) + 1 * (s_calculationType == ONE_ENEMY);
+}
+
+int nxnGrid::NumNonInvInCalc() const 
+{
+	// TODO : make this function more modular
+	return 0;
+}
+
 
 inline bool nxnGrid::InBoundary(int location, int xChange, int yChange) const
 {
@@ -723,46 +693,34 @@ enum nxnGrid::OBJECT nxnGrid::WhoAmI(int objIdx) const
 		objIdx < m_shelters.size() + m_nonInvolvedVec.size() + m_enemyVec.size() + 1 ? SHELTER : TARGET;
 }
 
-void nxnGrid::InsertParticlesRec(intVec & state, std::vector<State*> & particles, double pToBelief, int currIdx) const
+void nxnGrid::InitialBeliefStateRec(intVec & state, int currObj, double stateProb, std::vector<State*> & particles) const
 {
-	if (state.size() == currIdx)
+	if (currObj == CountMovingObjects())
 	{
-		// insert belief state to vector
-		nxnGridState* beliefState = static_cast<nxnGridState*>( Allocate(nxnGridState::StateToIdx(state), pToBelief) );
+		auto beliefState = static_cast<nxnGridState*>(Allocate(nxnGridState::StateToIdx(state), stateProb));
 		particles.push_back(beliefState);
 	}
 	else
 	{
-		// diverge probability equally between all possible object location
-		pToBelief /= m_gridSize * m_gridSize - currIdx;
-		for (int i = 0; i < m_gridSize * m_gridSize; ++i)
+		for (auto obj : s_objectsInitLocations[currObj])
 		{
-			state[currIdx] = i;
-			if (NoRepetitions(state, currIdx, m_gridSize))
-			{
-				InsertParticlesRec(state, particles, pToBelief, currIdx + 1);
-			}
+			state[currObj] = obj;
+			InitialBeliefStateRec(state, currObj + 1, stateProb, particles);
 		}
 	}
-
 }
-
-int nxnGrid::FindObservation(intVec state, double p) const
+OBS_TYPE nxnGrid::FindObservation(intVec & state, double p) const
 {
 	intVec obsState(CountMovingObjects());
 	obsState[0] = state[0];
 	// calculate observed state
-	double rem = p;
 	DecreasePObsRec(obsState, state, 1, 1.0, p);
-
-	OBS_TYPE obs = nxnGridState::StateToIdx(obsState);
-	nxnGridState s(nxnGridState::StateToIdx(state));
 
 	// return the observed state
 	return nxnGridState::StateToIdx(obsState);
 }
 
-void nxnGrid::SetNextPosition(intVec & state, std::vector<double> & randomNum) const
+void nxnGrid::SetNextPosition(intVec & state, doubleVec & randomNum) const
 {
 	// run on all enemies
 	for (int i = 0; i < m_enemyVec.size(); ++i)
@@ -790,12 +748,13 @@ void nxnGrid::CalcMovement(intVec & state, const Movable_Obj *object, double ran
 	// if the p that was pulled is in the pToward range move toward robot
 	double pToward = pStay + object->GetMovement().GetToward();
 	if (rand < pToward)
-	{
-		const Attack_Obj *enemy = static_cast<const Attack_Obj *>(object);
+	{		
 		// if the object is enemy and is allready in range do nothing
-		if (WhoAmI(objIdx) == ENEMY && InRange(state[0], state[objIdx], enemy->GetRange(), m_gridSize))
+		if (WhoAmI(objIdx) == ENEMY)
 		{
-			return;
+			const Attack_Obj *enemy = static_cast<const Attack_Obj *>(object);
+			if (enemy->GetAttack()->InRange(state[0], state[objIdx], m_gridSize))
+				return;
 		}
 
 		GetCloser(state, objIdx, m_gridSize);
@@ -838,31 +797,83 @@ bool nxnGrid::ValidLegalLocation(intVec & state, Coordinate location, int end, i
 	return true;
 }
 
-void nxnGrid::RescaleBelief(const intVec & beliefState, intVec & scaledState, int newGridSize, int oldGridSize) const
+void nxnGrid::ScaleState(const intVec & beliefState, intVec & scaledState) const
 {
-	double scale = static_cast<double>(oldGridSize) / newGridSize;
+	ScaleState(beliefState, scaledState, s_lutGridSize, m_gridSize);
+}
+
+void nxnGrid::ScaleState(const intVec & beliefState, intVec & scaledState, int newGridSize, int prevGridSize) const
+{
+	double scale = static_cast<double>(prevGridSize) / newGridSize;
 
 	for (size_t i = 0; i < beliefState.size(); ++i)
 	{
-		Coordinate location(beliefState[i] % oldGridSize, beliefState[i] / oldGridSize);
+		Coordinate location(beliefState[i] % prevGridSize, beliefState[i] / prevGridSize);
 		location /= scale;
 		scaledState[i] = location.X() + location.Y() * newGridSize;
 	}
-
-	// if the enemy is in the same spot move enemy to the neares available location
-	if (!NoRepetitions(scaledState, 1, newGridSize))
-		MoveObjectLocation(beliefState, scaledState, 1, newGridSize);
 
 	// if target is in self location shift map to the left or upper so self won't be in target location 
 	if (scaledState[0] == newGridSize * newGridSize - 1)
 		ShiftSelfFromTarget(beliefState, scaledState, newGridSize);
 
-	// if the non-involved is in non-valid location don't count him
-	if (m_nonInvolvedVec.size() > 0 && !NoRepetitions(scaledState, m_enemyVec.size() + 1, newGridSize))
-		MoveObjectLocation(beliefState, scaledState, m_enemyVec.size() + 1, newGridSize);
+	
+	int numEnemies = NumEnemiesInCalc();
+	// run on enemies in calculation if the enemy is in the same spot move enemy to the nearest available location
+	for (int i = 0; i < numEnemies; ++i)
+	{
+		if (!NoRepetitions(scaledState, i + 1, newGridSize))
+			MoveObjectLocation(beliefState, scaledState, i + 1, newGridSize);
+	}
 
+	// run on non-involved in calculation if the non-involved is in non-valid location move him to the nearest location
+	for (int i = 0; i < NumNonInvInCalc(); ++i)
+	{
+		if (!NoRepetitions(scaledState, numEnemies + 1 + i, newGridSize))
+			MoveObjectLocation(beliefState, scaledState, m_enemyVec.size() + 1, newGridSize);
+	}
+	
 
+	MoveNonProtectedShelters(beliefState, scaledState, newGridSize);
 }
+
+int nxnGrid::FindMaxReward(const doubleVec & rewards1E, const doubleVec & rewards2E, double & maxReward)
+{
+	doubleVec rewards;
+	// for non enemy related action do average
+	for (int a = 0; a < s_numBasicActions; ++a)
+	{
+		double sum = rewards1E[a] + rewards2E[a];
+		rewards.emplace_back(sum / 2);
+	}
+
+	// insert enemy related actions
+	for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+		rewards.emplace_back(rewards1E[a]);
+
+	for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+		rewards.emplace_back(rewards2E[a]);
+
+	return FindMaxReward(rewards, maxReward);
+}
+
+int nxnGrid::FindMaxReward(const doubleVec & rewards, double & maxReward)
+{
+	double max = REWARD_LOSS - 1;
+	int idxMax = -1;
+	for (int i = 0; i < rewards.size(); ++i)
+	{
+		if (rewards[i] > max)
+		{
+			max = rewards[i];
+			idxMax = i;
+		}
+	}
+
+	maxReward = max;
+	return idxMax;
+}
+
 
 bool nxnGrid::NoRepetitions(intVec & state, int currIdx, int gridSize)
 {
@@ -885,43 +896,25 @@ const Move_Properties & nxnGrid::GetMovement(int objIdx)
 }
 
 
-void nxnGrid::DecreasePObsRec(intVec & currState, intVec & originalState, int currIdx, double pToDecrease, double &pLeft) const
+void nxnGrid::DecreasePObsRec(intVec & currState, const intVec & originalState, int currIdx, double pToDecrease, double &pLeft) const
 {
-	if (currIdx == nxnGridState::s_sizeState)
+	if (currIdx == CountMovingObjects())
 	{
 		// decrease observed state probability from the left probability
 		pLeft -= pToDecrease;
 	}
 	else
 	{
-		// if object is dead we know it
-		if (originalState[currIdx] == m_gridSize * m_gridSize)
+		int selfLoc = originalState[0];
+		int objLoc = originalState[currIdx];
+		intVec observableLocations;
+		m_self.GetObservation()->InitObsAvailableLocations(selfLoc, objLoc, originalState, m_gridSize, observableLocations);
+		
+		for (int obs = 0; obs < observableLocations.size() & pLeft >= 0.0; ++obs)
 		{
-			currState[currIdx] = m_gridSize * m_gridSize;
-			DecreasePObsRec(currState, originalState, currIdx + 1, pToDecrease, pLeft);
-			return;
-		}
-
-		// if location is in range disparse probability
-		if (InRange(originalState[0], originalState[currIdx], m_self.GetRangeObs(), m_gridSize))
-		{
-			currState[currIdx] = originalState[currIdx];
-			DecreasePObsRec(currState, originalState, currIdx + 1, pToDecrease * m_self.GetPObs(), pLeft);
-			
-			double pError = pToDecrease * (1 - m_self.GetPObs());
-			for (size_t i = 0; i < 8 && pLeft >= 0.0; ++i)
-			{
-				currState[currIdx] = originalState[currIdx];
-				int change = s_lutDirections[i][0] + s_lutDirections[i][1] * m_gridSize;
-				currState[currIdx] += InBoundary(currState[currIdx], s_lutDirections[i][0], s_lutDirections[i][1]) ? change : 0;
-
-				DecreasePObsRec(currState, originalState, currIdx + 1, pError / 8, pLeft);
-			}
-		}
-		else // if we didn't observe object we think it does not exist
-		{
-			currState[currIdx] = m_gridSize * m_gridSize;
-			DecreasePObsRec(currState, originalState, currIdx + 1, pToDecrease, pLeft);
+			currState[currIdx] = observableLocations[obs];
+			double pObs = m_self.GetObservation()->GetProbObservation(selfLoc, objLoc, m_gridSize, observableLocations[obs]);
+			DecreasePObsRec(currState, originalState, currIdx + 1, pToDecrease * pObs, pLeft);
 		}
 	}
 }
@@ -931,17 +924,13 @@ inline int nxnGrid::CountMovingObjects() const
 	return 1 + m_enemyVec.size() + m_nonInvolvedVec.size();
 }
 
-std::vector<double> nxnGrid::CreateRandomVec(int size)
+void nxnGrid::CreateRandomVec(doubleVec & randomVec, int size)
 {
-	std::vector<double> randomVec;
 	// insert to a vector numbers between 0-1
 	for (int i = 0; i < size; ++i)
 	{
-		double r = std::rand();
-		randomVec.push_back( r / RAND_MAX);
+		randomVec.emplace_back(Random::RANDOM.NextDouble());
 	}
-
-	return randomVec;
 }
 
 void nxnGrid::GetCloser(intVec & state, int objIdx, int gridSize) const
@@ -961,9 +950,9 @@ void nxnGrid::GetCloser(intVec & state, int objIdx, int gridSize) const
 	int changeToInsertY = yDiff != 0 ? (yDiff / Abs(yDiff)) * m_gridSize : 0;
 
 	// insert to move the best valid option
-	if (ValidLocation(state, objLocation + changeToInsertX))
+	if (ValidLocation(state, move + changeToInsertX))
 		move += changeToInsertX;
-	if (ValidLocation(state, objLocation + changeToInsertY))
+	if (ValidLocation(state, move + changeToInsertY))
 		move += changeToInsertY;
 
 	state[objIdx] = move;
@@ -1019,160 +1008,288 @@ int nxnGrid::FindObjMove(int currLocation, double random, int gridSize) const
 	return currLocation;
 }
 
-bool nxnGrid::IsNear(int location, int observedLocation, int gridSize)
+bool nxnGrid::InSquare(int location, int location2, int squareSize,int gridSize)
 {
 	int xReal = location % gridSize;
 	int yReal = location / gridSize;
 
-	int xObserved = observedLocation % gridSize;
-	int yObserved = observedLocation / gridSize;
+	int xObserved = location2 % gridSize;
+	int yObserved = location2 / gridSize;
 
 	int xDiff = Abs(xReal - xObserved);
 	int yDiff = Abs(yReal - yObserved);
 
-	return (xDiff <= 1) & (yDiff <= 1);
+	return (xDiff <= squareSize) & (yDiff <= squareSize);
 }
 
+void nxnGrid::SendAction(int action)
+{
+	s_udpServer.Write(reinterpret_cast<char *>(&action), sizeof(int));
+}
 
-void nxnGrid::RandInitState()
+bool nxnGrid::RcvState(State * s, int action, OBS_TYPE & obs, double & reward)
 {
 	intVec state(CountMovingObjects());
+	intVec observation(CountMovingObjects());
+	InitStateIMP(state, observation);
 
-	state[0] = 0;
-	Coordinate p(state[0] % m_gridSize, state[0] / m_gridSize);
-	m_self.SetLocation(p);
-	size_t i = 1;
-	for (; i < m_enemyVec.size() + 1; ++i)
+	if (state[0] == m_targetIdx)
 	{
-		do
-		state[i] = rand() % (m_gridSize * m_gridSize);
-		while (!nxnGrid::NoRepetitions(state, i, m_gridSize));
-
-		Coordinate pEn(state[i] % m_gridSize, state[i] / m_gridSize);
-		m_enemyVec[i - 1].SetLocation(pEn);
+		SendAction(NumActions());
+		return true;
 	}
+	
+	s->state_id = nxnGridState::StateToIdx(state);
+	obs = nxnGridState::StateToIdx(observation);
 
-	for (; i < m_nonInvolvedVec.size() + m_enemyVec.size() + 1; ++i)
-	{
-		do
-		state[i] = rand() % (m_gridSize * m_gridSize);
-		while (!nxnGrid::NoRepetitions(state, i, m_gridSize));
+	reward = 0.0;
+	if (state[0] == m_gridSize * m_gridSize)
+		reward = REWARD_LOSS;
+	else if (state[0] == m_targetIdx)
+		reward = REWARD_WIN;
+	//else if (EnemyRelatedAction(action) & (state[1] == m_gridSize * m_gridSize))
+	//	reward = REWARD_ILLEGAL_MOVE;
 
-		Coordinate pNI(state[i] % m_gridSize, state[i] / m_gridSize);
-		m_nonInvolvedVec[i - 1 - m_enemyVec.size()].SetLocation(pNI);
-	}
-
-	intVec shelters(m_shelters.size());
-	for (size_t s = 0; s < m_shelters.size(); ++s)
-	{
-		do
-		shelters[s] = rand() % (m_gridSize * m_gridSize);
-		while (!nxnGrid::NoRepetitions(shelters, s, m_gridSize));
-
-		Coordinate pSh(shelters[s] % m_gridSize, shelters[s] / m_gridSize);
-		m_shelters[s].SetLocation(pSh);
-		nxnGridState::s_shelters[s].SetLocation(pSh);
-	}
-
-	m_targetIdx = m_gridSize * m_gridSize - 1;
-	nxnGridState::s_targetIdx = m_targetIdx;
+	return false;
 }
 
-int nxnGrid::ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double & expecteReward)
+void nxnGrid::InitState()
+{
+	if (s_modelType == VBS)
+		InitStateVBS();
+	else
+		InitStateRandom();
+}
+
+/// init state according to s_objectsInitLocations
+void nxnGrid::InitStateRandom()
+{
+	int obj = 0;
+	int idx = rand() % s_objectsInitLocations[obj].size();
+	int loc = s_objectsInitLocations[obj][idx];
+	m_self.SetLocation(Coordinate(loc % m_gridSize, loc / m_gridSize));
+	++obj;
+
+	for (int i = 0; i < m_enemyVec.size(); ++i, ++obj)
+	{
+		idx = rand() % s_objectsInitLocations[obj].size();
+		loc = s_objectsInitLocations[obj][idx];
+		m_enemyVec[i].SetLocation(Coordinate(loc % m_gridSize, loc / m_gridSize));
+	}
+	
+	for (int i = 0; i < m_nonInvolvedVec.size(); ++i, ++obj)
+	{
+		idx = rand() % s_objectsInitLocations[obj].size();
+		loc = s_objectsInitLocations[obj][idx];
+		m_nonInvolvedVec[i].SetLocation(Coordinate(loc % m_gridSize, loc / m_gridSize));
+	}
+
+	for (int i = 0; i < m_shelters.size(); ++i, ++obj)
+	{
+		idx = rand() % s_objectsInitLocations[obj].size();
+		loc = s_objectsInitLocations[obj][idx];
+		m_shelters[i].SetLocation(Coordinate(loc % m_gridSize, loc / m_gridSize));
+		nxnGridState::s_shelters[i] = loc;
+	}
+
+}
+/// init state from vbs simulator
+void nxnGrid::InitStateVBS()
+{
+	intVec state(CountMovingObjects());
+	intVec observation(CountMovingObjects());
+	InitStateIMP(state, observation);
+
+	int currObj = 0;
+	Coordinate self(state[currObj] % m_gridSize, state[currObj] / m_gridSize);
+	m_self.SetLocation(self);
+
+	for (int i = 0; i < m_enemyVec.size(); ++i)
+	{
+		++currObj;
+		Coordinate enemy;
+		if (state[currObj] == m_gridSize * m_gridSize)
+			enemy = Coordinate(m_gridSize, m_gridSize);
+		else
+			enemy = Coordinate(state[currObj] % m_gridSize, state[currObj] / m_gridSize);
+
+		m_enemyVec[i].SetLocation(enemy);
+	}
+
+	for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
+	{
+		++currObj;
+		Coordinate ninv;
+		if (state[currObj] == m_gridSize * m_gridSize)
+			ninv = Coordinate(m_gridSize, m_gridSize);
+		else
+			ninv = Coordinate(state[currObj] % m_gridSize, state[currObj] / m_gridSize);
+
+		m_nonInvolvedVec[i].SetLocation(ninv);
+	}
+}
+
+void nxnGrid::InitStateIMP(intVec & state, intVec & observation)
+{
+	int buffer[40];
+	int length = s_udpServer.Read(reinterpret_cast<char *>(buffer));
+
+	int vbsGridSize = buffer[0];
+
+	intVec identity;
+	intVec readState;
+	// read objects
+	for (int obj = 2; obj < length / sizeof(int); obj += 2)
+	{
+		identity.emplace_back(buffer[obj - 1]);
+		readState.emplace_back(buffer[obj]);
+	}
+
+	// organize objects according to identity
+	intVec organizedState(readState.size());
+	int obj = 0;
+	organizedState[obj] = FindObject(readState, identity, SELF, 0);
+
+	++obj;
+	std::vector<bool> isObserved(organizedState.size());
+	isObserved[0] = true;
+
+	for (int i = 0; i < m_enemyVec.size(); ++i, ++obj)
+	{
+		bool isObs;
+		organizedState[obj] = FindObject(readState, identity, ENEMY_VBS, OBSERVED_ENEMY_VBS, isObs, i);
+		isObserved[obj] = isObs;
+	}
+
+	for (int i = 0; i < m_nonInvolvedVec.size(); ++i, ++obj)
+	{
+		bool isObs;
+		organizedState[obj] = FindObject(readState, identity, NON_INVOLVED_VBS, OBSERVED_NON_INVOLVED_VBS, isObs, i);
+		isObserved[obj] = isObs;
+	}
+
+	// read shelters
+	for (int i = 0; i < m_shelters.size(); ++i, ++obj)
+		organizedState[obj] = FindObject(readState, identity, SHELTER, i);
+
+
+	// read and scale target
+	int vbsTarget = FindObject(readState, identity, TARGET, 0);
+	m_targetIdx = vbsTarget * (((double)(m_gridSize)) / vbsGridSize);
+	nxnGridState::s_targetLoc = m_targetIdx;
+
+	intVec scaledState(organizedState.size());
+	ScaleState(organizedState, scaledState, m_gridSize, vbsGridSize);
+
+	// insert to observation and state moving objects
+	obj = 0;
+	for (; obj < CountMovingObjects(); ++obj)
+	{
+		state[obj] = scaledState[obj];
+		observation[obj] = state[obj] * isObserved[obj] + m_gridSize*m_gridSize * (!isObserved[obj]);
+	}
+
+	//insert scaled shelters location
+	for (int i = 0; i < m_shelters.size(); ++i, ++obj)
+	{
+		nxnGridState::s_shelters[i] = scaledState[obj];
+		m_shelters[i].SetLocation(Coordinate(scaledState[obj] % m_gridSize, scaledState[obj] / m_gridSize));
+	}
+}
+
+int nxnGrid::FindObject(intVec & state, intVec & identity, int object, int idx)
+{
+	for (int i = 0; i < state.size(); ++i)
+	{
+		if (identity[i] == object)
+		{
+			if (idx == 0)
+				return state[i];
+
+			--idx;
+		}
+	}
+
+	return m_gridSize * m_gridSize;
+}
+
+int nxnGrid::FindObject(intVec & state, intVec & identity, int object, int observedObj, bool & isObserved, int idx)
+{
+	for (int i = 0; i < state.size(); ++i)
+	{
+		if (identity[i] == object | identity[i] == observedObj)
+		{
+			if (idx == 0)
+			{
+				isObserved = identity[i] == observedObj;
+				return state[i];
+			}
+			--idx;
+		}
+	}
+
+	return m_gridSize * m_gridSize;
+}
+
+int nxnGrid::ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double & expectedReward)
 {
 	const nxnGrid * model = static_cast<const nxnGrid *>(m);
 	int action = 0;
+	expectedReward = -100;
 
 	if (prior->history().Size() > 0)
 	{
 		intVec beliefState;
-
 		model->InitBeliefState(beliefState, prior->history());
-
-		if (s_calculationType == ALL)
-		{
-			std::pair<int, double> result = model->m_LUT->Find(beliefState);
-			// if the global decision was successful return action
-			if (result.first != NUM_ACTIONS)
-			{
-				expecteReward = result.second;
-				return result.first;
-			}
-		}
-		else if (s_calculationType == WO_NINV)
-		{
-			beliefState.erase(beliefState.begin() + 1 + model->m_enemyVec.size());
-			std::pair<int, double> result = model->m_LUT->Find(beliefState);
-			// if the decision was successful return action
-			if (result.first != NUM_ACTIONS)
-			{
-				expecteReward = result.second;
-				return result.first;
-			}
-		}
-		else if (s_calculationType == JUST_ENEMY)
-		{
-			// delete non-involved and shelter (in case of more than 1 objects type need to change this erase)
-			beliefState.erase(beliefState.begin() + 1 + model->m_enemyVec.size());
-			beliefState.erase(beliefState.begin() + 1 + model->m_enemyVec.size());
-			std::pair<int, double> result = model->m_LUT->Find(beliefState);
-			// if the decision was successful return action
-			if (result.first != NUM_ACTIONS)
-			{
-				expecteReward = result.second;
-				return result.first;
-			}
-		}
-		else if (s_calculationType == RESCALE_ALL)
-		{
-			// create scaled state
-			intVec scaledState(beliefState.size());
-			model->RescaleBelief(beliefState, scaledState, model->m_LUT->GetSarsopGridSize(0), model->m_gridSize);
-			// drop shelter from scaled state
-			intVec woShelter(scaledState);
-			model->DropUnProtectedShelter(woShelter, model->m_LUT->GetSarsopGridSize(0));
-			
-			std::pair<int, double> result = model->m_LUT->Find(scaledState);
-			// if the decision was successful return action
-			if (result.first != NUM_ACTIONS)
-			{
-				expecteReward = result.second;
-				return result.first;
-			}
-		}
-		else if (s_calculationType == STUPID)
-			return MOVE_FROM_ENEMY;
+		return model->ChoosePreferredActionIMP(beliefState, expectedReward);
 	}
 
 	return action;
 }
 
+int nxnGrid::ChoosePreferredAction(const State * state, const DSPOMDP* m, double & expectedReward)
+{
+	intVec beliefState;
+	nxnGridState::IdxToState(state, beliefState);
+	const nxnGrid * model = static_cast<const nxnGrid *>(m);
+
+	// add shelters to state
+	model->AddSheltersLocations(beliefState);
+
+	return model->ChoosePreferredActionIMP(beliefState, expectedReward);
+}
+
 void nxnGrid::InitBeliefState(intVec & beliefState,const History & h) const
 {
-	beliefState.resize(CountMovingObjects() + m_shelters.size());
-	int lastObs = h.Size() - 1;
+	beliefState.resize(CountMovingObjects());
 
-	beliefState[0] = GetObsLoc(h.Observation(lastObs), 0);
+	OBS_TYPE obs = h.LastObservation();
+	beliefState[0] = GetObsLoc(obs, 0);
+	
+	intVec observedState;
+	nxnGridState::IdxToState(obs, observedState);
 	int obj = 1;
 	for (; obj < CountMovingObjects() ; ++obj)
 	{
-		// if in the future we want to run on more than last observation need to change this loop
-		for (int i = 0; i < 1 && lastObs - i >= 0; ++i)
+		// if the object is non observed treat it as dead
+		int loc = beliefState[0];
+		// run on all history and initialize state with last location observed on object
+		for (int o = h.Size() - 1; o >= 0 & loc == beliefState[0]; --o)
 		{
-			OBS_TYPE obs = h.Observation(lastObs - i);
-			if (InObsRange(obs, obj))
-			{
-				beliefState[obj] = GetObsLoc(obs, obj);
-				continue;
-			}	
+			OBS_TYPE obs = h.Observation(o);
+			loc = GetObsLoc(obs, obj);
 		}
+
+		beliefState[obj] = loc * (loc != beliefState[0]) + m_gridSize * m_gridSize * (loc == beliefState[0]);
 	}
 
+	AddSheltersLocations(beliefState);
+}
+
+void nxnGrid::AddSheltersLocations(intVec & state) const
+{
 	for (auto v : m_shelters)
-	{
-		beliefState[obj] = v.GetLocation().GetIdx(m_gridSize);
-		++obj;
-	}
+		state.emplace_back(v.GetLocation().GetIdx(m_gridSize));
 }
 
 } //end ns despot

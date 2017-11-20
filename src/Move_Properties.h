@@ -1,4 +1,6 @@
-#pragma once
+#ifndef MOVE_PROPERTIES_H
+#define MOVE_PROPERTIES_H
+
 #include <fstream>      // std::ofstream
 
 ///properties of movement for object on grid
@@ -31,3 +33,4 @@ private:
 	static const int s_numDirections = 8;
 };
 
+# endif //MOVE_PROPERTIES_H

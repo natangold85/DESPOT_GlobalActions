@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COORDINATE_H
+#define COORDINATE_H
 
 #include <vector>
 
@@ -7,7 +8,11 @@ class Coordinate
 public:
 	Coordinate() = default;
 	Coordinate(int x, int y);
+	Coordinate(std::pair<int, int> coord);
 	~Coordinate() = default;
+	
+	Coordinate &operator=(const Coordinate & b) = default;
+	Coordinate &operator=(std::pair<int, int> coord);
 
 	friend Coordinate Min(Coordinate & a, Coordinate & b);
 	friend Coordinate Min(std::vector<Coordinate> & location, int idx);
@@ -44,3 +49,4 @@ private:
 	int m_y;
 };
 
+# endif //COORDINATE_H

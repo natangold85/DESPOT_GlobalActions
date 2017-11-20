@@ -70,7 +70,8 @@ LookaheadUpperBound::LookaheadUpperBound(const DSPOMDP* model,
 	particle_upper_bound_(bound) {
 }
 
-void LookaheadUpperBound::Init(const RandomStreams& streams) {
+void LookaheadUpperBound::Init(const RandomStreams& streams) 
+{
 	int num_states = indexer_.NumStates();
 	int length = streams.Length();
 	int num_particles = streams.NumStreams();
@@ -94,8 +95,8 @@ void LookaheadUpperBound::Init(const RandomStreams& streams) {
 					for (int a = 0; a < model_->NumActions(); a++) {
 						double reward = 0;
 						State* copy = model_->Copy(indexer_.GetState(s));
-						bool terminal = model_->Step(*copy, streams.Entry(p, t),
-							a, reward);
+						// for adding observation adding the observation of step s (FRAGILE : obs = state_id) NATAN CHANGES 
+						bool terminal = model_->Step(*copy, streams.Entry(p, t), a, copy->state_id, reward);
 						model_->Free(copy);
 						reward += (!terminal) * Globals::Discount()
 							* bounds_[p][t + 1][indexer_.GetIndex(copy)];

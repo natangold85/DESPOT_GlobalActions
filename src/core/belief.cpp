@@ -2,6 +2,8 @@
 #include "../../include/despot/core/pomdp.h"
 #include "../../include/despot/core/belief.h"
 
+#include "../nxnGrid.h"
+
 using namespace std;
 
 namespace despot {
@@ -62,74 +64,104 @@ vector<State*> Belief::Sample(int num, vector<State*> particles,
 }
 
 vector<State*> Belief::Resample(int num, const vector<State*>& belief,
-	const DSPOMDP* model, History history, int hstart) {
+	const DSPOMDP* model, History history, int hstart) 
+{
+	// randomization regarding choosing particles
 	double unit = 1.0 / num;
 	double mass = Random::RANDOM.NextDouble(0, unit);
 	int pos = 0;
 	double cur = belief[0]->weight;
 
+	// for step
 	double reward;
 	OBS_TYPE obs;
-
-	vector<State*> sample;
-	int count = 0;
-	double max_wgt = Globals::NEG_INFTY;
-	int trial = 0;
-	while (count < num && trial < 200 * num) {
-		// Pick next particle
-		while (mass > cur) {
-			pos++;
-			if (pos == belief.size())
-				pos = 0;
-
-			cur += belief[pos]->weight;
-		}
-		trial++;
-
-		mass += unit;
-
-		State* particle = model->Copy(belief[pos]);
-
-		// Step through history
-		double log_wgt = 0;
-		for (int i = hstart; i < history.Size(); i++) {
-			model->Step(*particle, Random::RANDOM.NextDouble(),
-				history.Action(i), reward, obs);
-
-			double prob = model->ObsProb(history.Observation(i), *particle,
-				history.Action(i));
-			if (prob > 0) {
-				log_wgt += log(prob);
-			} else {
-				model->Free(particle);
-				break;
+	
+	auto modelCast = static_cast<const nxnGrid *>(model);
+	std::vector<std::vector<std::pair<int, double>>> objLocations(modelCast->CountMovingObjects());
+	std::vector<int> stateVec;
+	// to get num particles need to take from each observed object nth root of num particles
+	double numObjLocations = pow(num, 1.0 / (modelCast->CountMovingObjects() - 1));
+	// insert self location (is known)
+	objLocations[0].emplace_back(modelCast->GetObsLoc(history.LastObservation(), 0), 1.0);
+	// run on each observable object and create individualy for each object belief state
+	for (int obj = 1; obj < modelCast->CountMovingObjects(); ++obj)
+	{
+		int trial = 0;
+		int count = 0;
+		while (count < numObjLocations && trial < 200 * numObjLocations)
+		{
+			// Pick next particle
+			while (mass > cur)
+			{
+				pos = (pos + 1) % belief.size();
+				cur += belief[pos]->weight;
 			}
-		}
+			trial++;
 
-		// Add to sample if survived
-		if (particle->IsAllocated()) {
-			count++;
+			mass += unit;
 
-			particle->weight = log_wgt;
-			sample.push_back(particle);
+			State* particle = model->Copy(belief[pos]);
 
-			max_wgt = max(log_wgt, max_wgt);
-		}
+			// Step through history
+			double wgt = 1.0;
+			// run on the first step seperatly because there no observation
+			int addToHStart = 0;
+			if (hstart == 0)
+			{
+				addToHStart = 1;
+				model->Step(*particle, Random::RANDOM.NextDouble(), history.Action(0), particle->state_id, reward, obs);
 
-		// Remove particles with very small weights
-		if (count == num) {
-			for (int i = sample.size() - 1; i >= 0; i--)
-				if (sample[i]->weight - max_wgt < log(1.0 / num)) {
-					model->Free(sample[i]);
-					sample.erase(sample.begin() + i);
-					count--;
+				double prob = modelCast->ObsProbOneObj(history.Observation(0), *particle, history.Action(0), obj);
+				if (prob == 0)
+				{
+					addToHStart = history.Size();
+					model->Free(particle);
 				}
+				else
+					wgt *= prob;
+			}
+
+			for (int i = hstart + addToHStart; i < history.Size(); i++)
+			{
+				model->Step(*particle, Random::RANDOM.NextDouble(), history.Action(i), history.Observation(i - 1), reward, obs);
+				double prob = modelCast->ObsProbOneObj(history.Observation(i), *particle, history.Action(i), obj);
+				if (prob > 0) {
+					wgt *= prob;
+				}
+				else {
+					model->Free(particle);
+					break;
+				}
+			}
+
+			// Add to obj available locations if survived
+			if (particle->IsAllocated()) 
+			{
+				nxnGridState::IdxToState(particle, stateVec);
+				count++;
+				objLocations[obj].emplace_back(stateVec[obj], wgt);
+			}
 		}
 	}
 
+	vector<State*> sample;
+	// create sample from object possible locations
+	modelCast->CreateParticleVec(objLocations, sample);
+
+	//double max_wgt = Globals::NEG_INFTY;
+	//// Remove particles with very small weights
+	//for (int i = sample.size() - 1; i >= 0; i--)
+	//{
+	//	if (sample[i]->weight - max_wgt < log(1.0 / num)) 
+	//	{
+	//		model->Free(sample[i]);
+	//		sample.erase(sample.begin() + i);
+	//	}
+	//}
+	
 	double total_weight = 0;
 	for (int i = 0; i < sample.size(); i++) {
-		sample[i]->weight = exp(sample[i]->weight - max_wgt);
+		//sample[i]->weight = exp(sample[i]->weight - max_wgt);
 		total_weight += sample[i]->weight;
 	}
 	for (int i = 0; i < sample.size(); i++) {
@@ -141,7 +173,6 @@ vector<State*> Belief::Resample(int num, const vector<State*>& belief,
 	for (int i = 0; i < sample.size(); i++) {
 		logv << " " << i << " = " << *sample[i] << endl;
 	}
-
 	return sample;
 }
 
@@ -190,9 +221,10 @@ vector<State*> Belief::Resample(int num, const Belief& belief, History history,
 
 		// Step through history
 		double log_wgt = 0;
-		for (int i = hstart; i < history.Size(); i++) {
-			belief.model_->Step(*particle, Random::RANDOM.NextDouble(),
-				history.Action(i), reward, obs);
+		hstart += hstart == 0 ? 1 : 0;
+		for (int i = hstart; i < history.Size(); i++) 
+		{
+			belief.model_->Step(*particle, Random::RANDOM.NextDouble(), history.Action(i), history.Observation(i - 1), reward, obs);
 
 			double prob = belief.model_->ObsProb(history.Observation(i),
 				*particle, history.Action(i));
@@ -245,7 +277,7 @@ vector<State*> Belief::Resample(int num, const Belief& belief, History history,
 	for (int i = 0; i < sample.size(); i++) {
 		logv << " " << i << " = " << *sample[i] << endl;
 	}
-
+	
 	return sample;
 }
 
@@ -269,7 +301,7 @@ ParticleBelief::ParticleBelief(vector<State*> particles, const DSPOMDP* model,
 
 	if (split) {
 		// Maintain more particles to avoid degeneracy
-		while (2 * num_particles_ < 5000)
+		while (2 * num_particles_ < Globals::config.num_particles)
 			num_particles_ *= 2;
 		if (particles_.size() < num_particles_) {
 			logi << "[ParticleBelief::ParticleBelief] Splitting " << particles_.size()
@@ -328,7 +360,9 @@ vector<State*> ParticleBelief::Sample(int num) const {
 	return Belief::Sample(num, particles_, model_);
 }
 
-void ParticleBelief::Update(int action, OBS_TYPE obs) {
+void ParticleBelief::Update(int action, OBS_TYPE obs) 
+{
+	OBS_TYPE prevObs = history_.Size() > 0 ? history_.LastObservation() : 0;
 	history_.Add(action, obs);
 
 	vector<State*> updated;
@@ -338,8 +372,8 @@ void ParticleBelief::Update(int action, OBS_TYPE obs) {
 	// Update particles
 	for (int i = 0; i <particles_.size(); i++) {
 		State* particle = particles_[i];
-		bool terminal = model_->Step(*particle, Random::RANDOM.NextDouble(),
-			action, reward, o);
+		OBS_TYPE lastObs = prevObs + particle->state_id * (prevObs == 0);
+		bool terminal = model_->Step(*particle, Random::RANDOM.NextDouble(), action, lastObs, reward, o);
 		double prob = model_->ObsProb(obs, *particle, action);
 
 		if (!terminal && prob) { // Terminal state is not required to be explicitly represented and may not have any observation
@@ -367,16 +401,14 @@ void ParticleBelief::Update(int action, OBS_TYPE obs) {
 			logw
 				<< "Resampling by searching initial particles which are consistent with history"
 				<< endl;
-			particles_ = Resample(num_particles_, initial_particles_, model_,
-				history_);
+			particles_ = Resample(num_particles_, initial_particles_, model_, history_);
 		}
 
 		if (particles_.size() == 0 && state_indexer_ != NULL) {
 			logw
 				<< "Resampling by searching states consistent with last (action, observation) pair"
 				<< endl;
-			particles_ = Resample(num_particles_, model_, state_indexer_,
-				action, obs);
+			particles_ = Resample(num_particles_, model_, state_indexer_, action, obs);
 		}
 
 		if (particles_.size() == 0) {

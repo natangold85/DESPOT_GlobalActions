@@ -7,9 +7,14 @@ using namespace std;
 
 namespace despot {
 
+inline int Max(int a, int b)
+{
+	return a * (a >= b) + b * (a < b);
+}
 /* =============================================================================
  * EvalLog class
  * =============================================================================*/
+std::vector<int> Tree_Properties::s_levelCounter;
 
 time_t EvalLog::start_time = 0;
 double EvalLog::curr_inst_start_time = 0;
@@ -131,7 +136,9 @@ Evaluator::Evaluator(DSPOMDP* model, string belief_type, Solver* solver,
 	solver_(solver),
 	start_clockt_(start_clockt),
 	target_finish_time_(-1),
-	out_(out) {
+	out_(out),
+	stream_to_save_tree_()
+{
 }
 
 Evaluator::~Evaluator() {
@@ -158,27 +165,52 @@ bool Evaluator::RunStep(int step, int round) {
 	double start_t = get_time_second();
 
 	double offlineReward;
-	//int action = rand() % 4;
-	int action = static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, offlineReward); // NATAN CHANGES SOLVER
-	//int action = solver_->Search().action;
-
-	// NATAN CHANGES
-	Tree_Properties propSingleStep;
-	static_cast<POMCP *>(solver_)->GetTreeProperties(propSingleStep);
-	tree_properties_[round] += propSingleStep;
-
+	int action;
+	double startStep = get_time_second();
+	if (nxnGrid::GetModelType() == nxnGrid::ONLINE)
+		action = solver_->Search().action;
+	else
+		action = static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, offlineReward);
+	double endSearch = get_time_second();
+	
+	
 	double end_t = get_time_second();
 	logi << "[RunStep] Time spent in " << typeid(*solver_).name()
 		<< "::Search(): " << (end_t - start_t) << endl;
 
-	double reward;
-	OBS_TYPE obs;
 	start_t = get_time_second();
 	*out_ << "-----------------------------------Round " << round
 		<< " Step " << step << "-----------------------------------"
 		<< endl;
 
-	bool terminal = ExecuteAction(action, reward, obs);
+	double reward;
+	OBS_TYPE obs;
+	bool terminal;
+
+	// if evaluation is with vbs send action and recieve state
+	if (nxnGrid::GetModelType() == nxnGrid::VBS)
+	{
+		// send action to simulator
+		static_cast<nxnGrid *>(model_)->SendAction(action);
+		// read state and update reward and observation
+		terminal = static_cast<nxnGrid *>(model_)->RcvState(state_, action, obs, reward);
+		reward_ = reward;
+		total_discounted_reward_ += Globals::Discount(step) * reward_;
+		total_undiscounted_reward_ += reward_;
+	}
+	else
+	{
+		// gathering tree properties
+		Tree_Properties propSingleStep;
+		static_cast<POMCP *>(solver_)->GetTreeProperties(propSingleStep);
+		propSingleStep.UpdateCount();
+		tree_properties_[round] += propSingleStep;
+		if (stream_to_save_tree_ != NULL)
+			static_cast<POMCP *>(solver_)->SaveTreeInFile(*stream_to_save_tree_);
+		
+		terminal = ExecuteAction(action, reward, obs);
+	}
+
 	end_t = get_time_second();
 	logi << "[RunStep] Time spent in ExecuteAction(): " << (end_t - start_t)
 		<< endl;
@@ -232,11 +264,16 @@ bool Evaluator::RunStep(int step, int round) {
 	*out_<<endl;
 
 	start_t = get_time_second();
-	//solver_->Update(action, obs);
-	solver_->UpdateHistory(action, obs); // NATAN CHANGES SOLVER
+
+	// update action and observation in history and belief state(not exist in offline)
+	if (nxnGrid::GetModelType() != nxnGrid::OFFLINE )
+		solver_->Update(action, obs);
+	else
+		solver_->UpdateHistory(action, obs);
+
 	end_t = get_time_second();
 	logi << "[RunStep] Time spent in Update(): " << (end_t - start_t) << endl;
-
+	std::cout << "\nsearch time = " << endSearch - startStep << " step time = " << end_t - startStep << "\n\n";
 	step_++;
 	return false;
 }
@@ -252,14 +289,11 @@ double Evaluator::AverageUndiscountedRoundReward() const {
 
 double Evaluator::StderrUndiscountedRoundReward() const {
 	double sum = 0, sum2 = 0;
-	std::cout << "undiscounted reward:\n";
 	for (int i = 0; i < undiscounted_round_rewards_.size(); i++) {
 		double reward = undiscounted_round_rewards_[i];
-		std::cout << reward << ", ";
 		sum += reward;
 		sum2 += reward * reward;
 	}
-	std::cout << "\n";
 	int n = undiscounted_round_rewards_.size();
 	return n > 0 ? sqrt(sum2 / n / n - sum * sum / n / n / n) : 0.0;
 }
@@ -276,38 +310,82 @@ double Evaluator::AverageDiscountedRoundReward() const {
 
 double Evaluator::StderrDiscountedRoundReward() const {
 	double sum = 0, sum2 = 0;
-	std::cout << "discounted reward:\n";
 	for (int i = 0; i < discounted_round_rewards_.size(); i++) {
 		double reward = discounted_round_rewards_[i];
-		std::cout << reward << ", ";
 		sum += reward;
 		sum2 += reward * reward;
 	}
-	std::cout << "\n";
 	int n = discounted_round_rewards_.size();
 	return n > 0 ? sqrt(sum2 / n / n - sum * sum / n / n / n) : 0.0;
 }
 
-void Evaluator::PrintTreeProp() const
+void Evaluator::AddDiscounted2String(std::string & buffer) const // NATAN CHANGES
 {
-	Tree_Properties treeResult;
-	for (auto v : tree_properties_)
-		treeResult += v;
+	buffer += "discounted reward:\n";
+	for (auto v : discounted_round_rewards_) 
+		buffer += std::to_string(v) + ", ";
+	buffer += "\n";
+}
 
-	treeResult /= tree_properties_.size();
+void Evaluator::AddUnDiscounted2String(std::string & buffer) const // NATAN CHANGES
+{
+	buffer += "undiscounted reward:\n";
+	for (auto v : undiscounted_round_rewards_)
+		buffer += std::to_string(v) + ", ";
+}
 
-	cout << "Tree Properties average:\nheight = " << treeResult.m_height << " size = " << treeResult.m_size << " balance factor = " << treeResult.m_balanceFactor;
-	cout << "\n\nHeight:\n";
-	for (auto v : tree_properties_)
-		cout << v.m_height << ", ";
+void Evaluator::PrintTreeProp(std::string & buffer) const
+{
 
-	cout << "\n\Size:\n";
+	buffer += "\n\nHeight:\n";
+	double maxHeight = 0;
 	for (auto v : tree_properties_)
-		cout << v.m_size << ", ";
+	{
+		if (isinf(v.m_height))
+			buffer += "0, ";
+		else
+		{
+			maxHeight = Max(maxHeight, v.m_height);
+			buffer += std::to_string(v.m_height) + ", ";
+		}
+	}
 
-	cout << "\n\Balance Factor:\n";
+	buffer += "\n\Size:\n";
 	for (auto v : tree_properties_)
-		cout << v.m_balanceFactor << ", ";
+	{
+		if (isinf(v.m_size))
+			buffer += "0, ";
+		else
+			buffer += std::to_string(v.m_size) + ", ";
+	}
+
+	buffer += "\n\level sizes:\n";
+	for (int i = 0; i < maxHeight - 1; ++i)
+	{
+		for (auto v : tree_properties_)
+		{
+			if (i < v.m_levelSize.size())
+				buffer += std::to_string(v.m_levelSize[i]) + ", ";
+			else
+				buffer += "0 , ";
+		}
+		buffer += "\n";
+	}
+
+
+	buffer += "\nlevel portion:\n";
+	for (int i = 0; i < maxHeight - 1; ++i)
+	{
+		for (auto v : tree_properties_)
+		{
+			if (i < v.m_levelSize.size())
+				buffer += std::to_string(v.m_preferredActionPortion[i]) + ", ";
+			else
+				buffer += "0 , ";
+		}
+		buffer += "\n";
+	}
+
 }
 
 void Evaluator::ReportStepReward() {
@@ -617,10 +695,14 @@ double POMDPEvaluator::EndRound() {
 	return total_undiscounted_reward_;
 }
 
-bool POMDPEvaluator::ExecuteAction(int action, double& reward, OBS_TYPE& obs) {
+bool POMDPEvaluator::ExecuteAction(int action, double& reward, OBS_TYPE& obs) 
+{
 	double random_num = random_.NextDouble();
-	bool terminal = model_->Step(*state_, random_num, action, reward, obs);
-
+	// if this is the first action treat current state as observation
+	// FRAGILE observation = state_id
+	OBS_TYPE lastObs = solver_->belief()->history_.Size() > 0 ? solver_->belief()->history_.LastObservation() : state_->state_id;
+	bool terminal = model_->Step(*state_, random_num, action, lastObs, reward, obs);
+	
 	reward_ = reward;
 	total_discounted_reward_ += Globals::Discount(step_) * reward;
 	total_undiscounted_reward_ += reward;

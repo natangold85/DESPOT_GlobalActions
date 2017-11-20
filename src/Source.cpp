@@ -5,11 +5,9 @@
 #include "../include/despot/solver/pomcp.h"
 
 /// models available
-#include "nxnGrid.h"
+#include "nxnGridGlobalActions.h"
 
 /// for nxnGrid
-#include "..\CreateLUT\StateActionLUT.h"
-#include "MapOfPomdp.h"
 #include "Coordinate.h"
 #include "Move_properties.h"
 #include "Attack_Obj.h"
@@ -19,15 +17,19 @@
 
 using namespace despot;
 
-const char * BACKUPFILENAME = "trash";
-const static char * LUTFILENAME = "5x5(E&S)_LUT(0.2).bin";
+static std::vector<std::string> s_LUTFILENAMES{  "10x10Grid1x0x1_LUT_POMDP.bin", "10x10Grid1x0x1_LUT_MDP.bin"};
+static std::vector<int> s_LUT_GRIDSIZE{ 10, 10};
+static std::vector<nxnGrid::CALCULATION_TYPE> s_CALCTYPE{ nxnGrid::CALCULATION_TYPE::WO_NINV, nxnGrid::CALCULATION_TYPE::WO_NINV };
+
+int g_gridSize = 20;
 
 Attack_Obj CreateEnemy(int x, int y, int gridSize)
 {
 	int attackRange = gridSize / 4;
 	attackRange += (attackRange == 0);
 
-	double pHit = 0.5;
+	// multiply 0.5 by observation
+	double pHit = 0.5 * 0.5;
 	double pStay = 0.4;
 	double pTowardSelf = 0.4;
 
@@ -43,8 +45,10 @@ Self_Obj CreateSelf(int x, int y, int gridSize)
 
 	double pHit = 0.5;
 
-	size_t observationRange = 2 * gridSize;
-	double pSuccessObs = 0.9;
+	int observationRange = 2 * gridSize;
+	double pSuccessObs = 0.5;
+	double pFirstSquare = 0.4;
+	Self_Observation obs(observationRange, pSuccessObs, pFirstSquare);
 
 	double pMove = 0.9;
 	double pStay = 1 - pMove;
@@ -52,7 +56,7 @@ Self_Obj CreateSelf(int x, int y, int gridSize)
 	Coordinate location(x, y);
 	Move_Properties movement(pStay, pMove);
 
-	return Self_Obj(location, movement, attackRange, pHit, observationRange, pSuccessObs);
+	return Self_Obj(location, movement, attackRange, pHit, obs);
 }
 
 Movable_Obj CreateNInv(int x, int y)
@@ -82,40 +86,15 @@ public:
 	DSPOMDP* InitializeModel(option::Option* options) 
 	{
 		// create nxnGrid problem
-		int gridSize = 10;
 
-		Self_Obj self = CreateSelf(0, 0, gridSize);
-		std::vector<intVec> key(1);
-		key[0].resize(4);
-		key[0][0] = 3;
-		for (int i = 1; i < 4; ++i)
-			key[0][i] = 1;
+		// init static members
+		nxnGridState::InitStatic();
 
-		std::shared_ptr<StateActionLUT> lut(new StateActionLUT(key, gridSize));
-		
-		std::ifstream readLut(LUTFILENAME, std::ios::in | std::ios::binary);
-		if (readLut.fail())
-		{
-			std::cout << "failed open lut file for write\n\n\n";
-			exit(1);
-		}
-		else
-		{
-			readLut >> *lut;
-			if (readLut.bad())
-			{
-				std::cout << "failed write lut\n\n\n";
-				exit(1);
-			}
-			else
-				std::cout << "lut written succesfuly\n\n\n";
+		Self_Obj self = CreateSelf(0, 0, g_gridSize);
 
-			readLut.close();
-		}
+		nxnGridGlobalActions *model = new nxnGridGlobalActions(g_gridSize, 0, self);
 
-		nxnGrid *model = new nxnGrid(gridSize, 0, self, lut, nxnGrid::RESCALE_ALL);
-
-		model->AddObj(CreateEnemy(0, 0, gridSize));
+		model->AddObj(CreateEnemy(0, 0, g_gridSize));
 		model->AddObj(CreateNInv(0, 0));
 		model->AddObj(CreateShelter(0, 0));
 
@@ -126,10 +105,101 @@ public:
 	}
 };
 
+void ReadOfflineLUT(std::string & lutFName, std::map<int, std::pair<int, double>> & offlineLut)
+{
+	std::ifstream readLut(lutFName, std::ios::in | std::ios::binary);
+	if (readLut.fail())
+	{
+		std::cout << "failed open lut file for write\n\n\n";
+		exit(1);
+	}
+	else
+	{
+		int size;
+		readLut.read(reinterpret_cast<char *>(&size), sizeof(int));
+		for (int i = 0; i < size; ++i)
+		{
+			int state;
+			readLut.read(reinterpret_cast<char *>(&state), sizeof(int));
+			int action;
+			readLut.read(reinterpret_cast<char *>(&action), sizeof(int));
+			double reward;
+			readLut.read(reinterpret_cast<char *>(&reward), sizeof(double));
+			offlineLut[state] = std::make_pair(action, reward);
+		}
+		if (readLut.bad())
+		{
+			std::cout << "failed write lut\n\n\n";
+			exit(1);
+		}
+		else
+			std::cout << "lut written succesfuly\n\n\n";
+
+		readLut.close();
+	}
+}
+
+void Run(int argc, char* argv[], std::string & outputFName, int numRuns)
+{
+	remove(outputFName.c_str());
+	std::ofstream output(outputFName.c_str(), std::ios::out);
+	if (output.fail())
+	{
+		std::cerr << "failed open output file";
+		exit(1);
+	}
+
+	// run model numRuns times
+	output << "results for naive online. num runs = " << numRuns << "\n";
+	for (size_t i = 0; i < numRuns; i++)
+	{
+		std::cout << "\n\n\trun #" << i << ":\n";
+		output << "\n\n\trun #" << i << ":\n";
+		NXNGrid().run(argc, argv, output);
+		output.flush();
+	}
+
+	if (output.fail())
+	{
+		std::cerr << "error in write output file";
+		exit(1);
+	}
+}
+
 int main(int argc, char* argv[]) 
 {
+	int numRuns = 10;
 	srand(time(NULL));
-		
-	NXNGrid().run(argc, argv);
+
+	for (int j = 0; j < s_LUTFILENAMES.size(); ++j)
+	{
+		// init lut
+		std::map<int, std::pair<int, double>> offlineLut;
+		ReadOfflineLUT(s_LUTFILENAMES[j], offlineLut);
+		nxnGrid::InitLUT(offlineLut, s_LUT_GRIDSIZE[j], nxnGrid::ONLINE ,s_CALCTYPE[j]);
+		// create output file
+
+		std::string outputFName(s_LUTFILENAMES[j]);
+		// pop ".bin"
+		outputFName.pop_back();
+		outputFName.pop_back();
+		outputFName.pop_back();
+		outputFName.pop_back();
+
+		//outputFName.append("_resultOffline.txt");
+		outputFName.append("_result.txt");
+		Run(argc, argv, outputFName, numRuns);
+	}
+
+	{
+		std::string outputFName("naive_result.txt");
+		std::map<int, std::pair<int, double>> offlineLut;
+		nxnGrid::InitLUT(offlineLut, 10);
+		Run(argc, argv, outputFName, numRuns);
+	}
+
+	char c;
+	std::cout << "result written succesfully. press any key to exit\n";
+	std::cin >> c;
 	return 0;
 }

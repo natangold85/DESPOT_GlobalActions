@@ -1,4 +1,6 @@
-#pragma once
+#ifndef MOVABLE_OBJ_H
+#define MOVABLE_OBJ_H
+
 #include <fstream>      // std::ofstream
 
 #include "ObjInGrid.h"
@@ -30,3 +32,4 @@ private:
 	Move_Properties m_movement;
 };
 
+# endif //MOVABLE_OBJ_H

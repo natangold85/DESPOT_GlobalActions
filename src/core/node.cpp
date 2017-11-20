@@ -8,6 +8,29 @@ namespace despot {
 /* =============================================================================
  * VNode class
  * =============================================================================*/
+// id for saving tree in file FRAGILE- do not change
+static enum TYPE_FOR_IO{VNODE = 123, QNODE = 456};
+
+std::ofstream &operator<<(std::ofstream & out, const VNode & vnode) // NATAN CHANGES
+{
+	out << VNODE << vnode.depth_ << vnode.count_ << vnode.value_ << vnode.children_.size();
+	for (auto v : vnode.children_)
+		out << *v;
+
+	return out;
+}
+
+std::ofstream &operator<<(std::ofstream & out, const QNode & qnode) // NATAN CHANGES
+{
+	out << QNODE << qnode.count_ << qnode.value_ << qnode.children_.size();
+	for (auto v : qnode.children_)
+	{
+		out << v.first;
+		out << *v.second;
+	}
+
+	return out;
+}
 
 VNode::VNode(vector<State*>& particles, int depth, QNode* parent,
 	OBS_TYPE edge) :
@@ -238,30 +261,63 @@ int VNode::Height() // NATAN CHANGES
 	return maxHeight + 1;
 }
 
-double VNode::BalanceFactor()
+void  VNode::LevelSize(std::vector<double> & DividedSize, int currLevel)// NATAN CHANGES
 {
-	int minHeight = 200;
-	int maxHeight = 0;
-	double allChild = 0.0;
-	bool atLeast1 = false;
 	for (int a = 0; a < children_.size(); a++)
 	{
-		double childBalance = 0.0;
 		std::map<OBS_TYPE, VNode *> childs = children_[a]->children();
+
 		std::for_each(childs.begin(), childs.end(), [&](std::map<OBS_TYPE, VNode *>::const_reference itr)
 		{
-			int height = itr.second->Height();
-			minHeight = height * (height < minHeight) + minHeight * (height >= minHeight);
-			maxHeight = height * (height >= maxHeight) + maxHeight * (height < maxHeight);
-			double bf = itr.second->BalanceFactor();
-			childBalance = childBalance * (childBalance >= bf) + bf * (childBalance < bf);
-			atLeast1 = true;
+			itr.second->LevelSize(DividedSize, currLevel + 1);
+			++DividedSize[currLevel];
 		});
-		allChild += childs.size() > 0 ? childBalance: 0;
-	}
 
-	return (maxHeight - minHeight) * atLeast1 + allChild / children_.size();
+	}
 }
+
+void  VNode::LevelActionSize(std::vector<std::vector<double>> & DividedSize, int currLevel)// NATAN CHANGES
+{
+	for (int a = 0; a < children_.size(); a++)
+	{
+		std::map<OBS_TYPE, VNode *> childs = children_[a]->children();
+
+		std::for_each(childs.begin(), childs.end(), [&](std::map<OBS_TYPE, VNode *>::const_reference itr)
+		{
+			itr.second->LevelActionSize(DividedSize, currLevel + 1);
+			++DividedSize[a][currLevel];
+		});
+	}
+}
+
+void VNode::PreferredActionPortion(std::vector<double> & portion, const std::vector<double> & sizes, int currLevel) // NATAN CHANGES
+{
+	// find preffered action for vnode
+	int preferredAction = -1;
+	double maxValue = -1000.0;
+	for (int a = 0; a < children_.size(); a++)
+	{
+		if (children_[a]->value() > maxValue)
+		{
+			maxValue = children_[a]->value();
+			preferredAction = a;
+		}
+	}
+	
+	double preferredSize = children_[preferredAction]->children().size();
+	
+	// compute the next ratio
+	std::map<OBS_TYPE, VNode *> childs = children_[preferredAction]->children();
+	std::for_each(childs.begin(), childs.end(), [&](std::map<OBS_TYPE, VNode *>::const_reference itr)
+	{
+		itr.second->PreferredActionPortion(portion, sizes, currLevel + 1);
+	});
+	
+	// add preferred action size
+	if (sizes[currLevel] > 0)
+		portion[currLevel] += preferredSize / sizes[currLevel];
+}
+
 
 void VNode::PrintTree(int depth, ostream& os) {
 	if (depth != -1 && this->depth() > depth)

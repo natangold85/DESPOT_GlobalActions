@@ -1,27 +1,17 @@
 #include "Self_Obj.h"
 
-
-
-Self_Obj::Self_Obj(Coordinate& location, Move_Properties& movement, double attackRange, double pHit, int rangeObs, double pObservation)
-: Attack_Obj(location, movement, attackRange, pHit)
-, m_rangeObs(rangeObs)
-, m_pObservation(pObservation)
+Self_Obj::Self_Obj(Coordinate& location, Move_Properties& movement, std::shared_ptr<Attack> attack, std::shared_ptr<Observation> observation)
+: Attack_Obj(location, movement, attack)
+, m_observation(observation)
 {
 }
 
-std::ofstream & operator<<(std::ofstream & out, const Self_Obj & obj)
+void Self_Obj::AttackOnline(int objLoc, int targetLoc, intVec & state, intVec & shelters, int gridSize, double random) const
 {
-	//const Attack_Obj base = static_cast<const Attack_Obj >(obj);
-	//out << base;
-
-	//out.write(reinterpret_cast<const char *>(&obj.m_rangeObs), sizeof(int));
-	//out.write(reinterpret_cast<const char *>(&obj.m_rangeObs), sizeof(double));
-	out.write(reinterpret_cast<const char *>(&obj), sizeof(Self_Obj));
-	return out;
+	m_attack->AttackOnline(objLoc, targetLoc, state, shelters, gridSize, random);
 }
 
-std::ifstream & operator>>(std::ifstream & in, Self_Obj & obj)
+void Self_Obj::AttackOffline(int objLoc, int targetLoc, intVec & state, intVec & shelters, int gridSize, Attack::shootOutcomes & result) const
 {
-	in.read(reinterpret_cast<char *>(&obj), sizeof(Self_Obj));
-	return in;
+	m_attack->AttackOffline(objLoc, targetLoc, state, shelters, gridSize, result);
 }
