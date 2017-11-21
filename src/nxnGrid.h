@@ -113,10 +113,10 @@ public:
 	/// get observed location of object (identified by idx) given observation
 	int GetObsLoc(OBS_TYPE obs, int objIdx) const;
 
+	/// return vector of rewards given model and prior
+	static void ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, doubleVec & expectedRewards);
 	/// return a preferred action given model and prior
-	static int ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double & expectedReward);
-	/// return a preferred action given model and prior
-	static int ChoosePreferredAction(const State * state, const DSPOMDP* m, double & expectedReward);
+	static int ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double expectedReward);
 
 	/// initialize beliefState according to history
 	void InitBeliefState(intVec & beliefState, const History & h) const;
@@ -195,8 +195,9 @@ protected:
 
 private:
 	/// implementation of choose prefferred action
-	int ChoosePreferredActionIMP(intVec & state, double & expectedReward) const;
+	void ChoosePreferredActionIMP(intVec & state, doubleVec & expectedReward) const;
 
+	static int FindMaxReward(const doubleVec & rewards, double & expectedReward);
 	/// create particle from available locations
 	void CreateParticleVecRec(intVec & state, std::vector<std::vector<std::pair<int, double> > > & objLocations, std::vector<State*> & particles, double weight, int currIdx) const;
 
@@ -222,9 +223,9 @@ private:
 	void ScaleState(const intVec & beliefState, intVec & scaledState) const;
 	void ScaleState(const intVec & beliefState, intVec & scaledState, int newGridSize, int prevGridSize) const;
 
-	static int FindMaxReward(const doubleVec & rewards1E, const doubleVec & rewards2E, double & maxReward);
-	/// find max reward in reard vec and return its idx in the vector
-	static int FindMaxReward(const doubleVec & rewards, double & maxReward);
+	/// initialize rewards vector of 2 enemies from 2 vectors of rewards vec of 1 enemy
+	void Combine2EnemiesRewards(const intVec & beliefState, const doubleVec & rewards1E, const doubleVec & rewards2E, doubleVec & rewards) const;
+
 
 	/// move non protected shelters to close non-object location
 	void MoveNonProtectedShelters(const intVec & baliefState, intVec & scaledState, int newGridSize) const;

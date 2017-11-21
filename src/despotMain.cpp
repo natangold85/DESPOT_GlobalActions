@@ -73,7 +73,7 @@ public:
 		// add objects to model
 
 		model->AddObj(CreateEnemy(0, 0, s_onlineGridSize));
-		//model->AddObj(CreateEnemy(0, 0, s_onlineGridSize));
+		model->AddObj(CreateEnemy(0, 0, s_onlineGridSize));
 
 		model->AddObj(CreateNInv(0, 0));
 		//model->AddObj(CreateNInv(0, 0));
@@ -92,25 +92,25 @@ int main(int argc, char* argv[])
 
 	nxnGrid::InitUDP();
 
-	for (int j = 0; j < s_LUTFILENAMES.size(); ++j)
-	{
-		// init lut
-		std::map<STATE_TYPE, std::vector<double>> offlineLut;
-		ReadOfflineLUT(s_LUTFILENAMES[j], offlineLut);
-		nxnGrid::InitLUT(offlineLut, s_LUT_GRIDSIZE[j], nxnGrid::ONLINE ,s_CALCTYPE[j]);
-		// create output file
+	//for (int j = 0; j < s_LUTFILENAMES.size(); ++j)
+	//{
+	//	// init lut
+	//	std::map<STATE_TYPE, std::vector<double>> offlineLut;
+	//	ReadOfflineLUT(s_LUTFILENAMES[j], offlineLut);
+	//	nxnGrid::InitLUT(offlineLut, s_LUT_GRIDSIZE[j], nxnGrid::ONLINE ,s_CALCTYPE[j]);
+	//	// create output file
 
-		std::string outputFName(s_LUTFILENAMES[j]);
-		// pop ".bin"
-		outputFName.pop_back();
-		outputFName.pop_back();
-		outputFName.pop_back();
-		outputFName.pop_back();
+	//	std::string outputFName(s_LUTFILENAMES[j]);
+	//	// pop ".bin"
+	//	outputFName.pop_back();
+	//	outputFName.pop_back();
+	//	outputFName.pop_back();
+	//	outputFName.pop_back();
 
-		//outputFName.append("_resultOffline.txt");
-		outputFName.append("_result.txt");
-		Run(argc, argv, outputFName, numRuns);
-	}
+	//	//outputFName.append("_resultOffline.txt");
+	//	outputFName.append("_result.txt");
+	//	Run(argc, argv, outputFName, numRuns);
+	//}
 
 	{
 		std::string outputFName("naive_result.txt");
@@ -204,9 +204,9 @@ void InitObjectsLocations(std::vector<std::vector<int>> & objVec, int gridSize)
 	objVec[obj] = enemy1Loc;
 	++obj;
 
-	//std::vector<int> enemy2Loc{ 26, 27, 36, 37 };
-	//objVec[obj] = enemy2Loc;
-	//++obj;
+	std::vector<int> enemy2loc{ 26, 27, 36, 37 };
+	objVec[obj] = enemy2loc;
+	++obj;
 
 	std::vector<int> nonInv1Loc{ 55, 56, 65, 66 };
 	objVec[obj] = nonInv1Loc;

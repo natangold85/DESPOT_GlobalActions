@@ -351,35 +351,39 @@ void nxnGrid::CreateParticleVec(std::vector<std::vector<std::pair<int, double> >
 	CreateParticleVecRec(state, objLocations, particles, 1.0, 0);
 }
 
-int nxnGrid::ChoosePreferredActionIMP(intVec & beliefState, double & expectedReward) const
+void nxnGrid::ChoosePreferredActionIMP(intVec & beliefState, doubleVec & expectedReward) const
 {
-	int action = 0;
-	expectedReward = -100;
-	lut_t::iterator itr;
+	lut_t::iterator itr, itr2;
+	intVec scaledState;
+	intVec modifiedBeliefState;
 
-	if (s_calculationType == ALL)
+	switch (s_calculationType)
 	{
-		intVec scaledState(beliefState.size());
+	case ALL:
+		scaledState.resize(beliefState.size());
 		ScaleState(beliefState, scaledState);
 		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
 		if (itr != s_LUT.end())
-			action = FindMaxReward(itr->second, expectedReward);
-	}
-	else if (s_calculationType == WO_NINV)
-	{
+			expectedReward = itr->second;
+		else
+			expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
+
+	case WO_NINV:
 		// erase all non involved
 		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
 			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
 
-		intVec scaledState(beliefState.size());
+		scaledState.resize(beliefState.size());
 		ScaleState(beliefState, scaledState);
-		STATE_TYPE idx = nxnGridState::StateToIdx(scaledState, s_lutGridSize);
-		itr = s_LUT.find(idx);
+		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
 		if (itr != s_LUT.end())
-			action = FindMaxReward(itr->second, expectedReward);
-	}
-	else if (s_calculationType == JUST_ENEMY)
-	{
+			expectedReward = itr->second;
+		else
+			expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
+
+	case JUST_ENEMY:
 		// erase all non involved
 		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
 			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
@@ -387,56 +391,76 @@ int nxnGrid::ChoosePreferredActionIMP(intVec & beliefState, double & expectedRew
 		for (int i = 0; i < m_shelters.size(); ++i)
 			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
 
-		intVec scaledState(beliefState.size());
+		scaledState.resize(beliefState.size());
 		ScaleState(beliefState, scaledState);
 		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
 		if (itr != s_LUT.end())
-			action = FindMaxReward(itr->second, expectedReward);
-	}
-	else if (s_calculationType == ONE_ENEMY)
-	{
-		assert(m_enemyVec.size() >= 2);
+			expectedReward = itr->second;
+		else
+			expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
 
+	case ONE_ENEMY:
 		// erase all non involved
 		for (int i = 0; i < m_nonInvolvedVec.size(); ++i)
 			beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
 
-		// calculate reward without second enemy
-		intVec firstE(beliefState);
-		firstE.erase(firstE.begin() + 1 + 1);
+		// calculate reward with first enemy
+		modifiedBeliefState = beliefState;
+		modifiedBeliefState.erase(modifiedBeliefState.begin() + 1 + 1);
 
-		intVec scaledStateE1(firstE.size());
-		ScaleState(firstE, scaledStateE1);
-		lut_t::iterator itrE1 = s_LUT.find(nxnGridState::StateToIdx(scaledStateE1, s_lutGridSize));
+		scaledState.resize(modifiedBeliefState.size());
+		ScaleState(modifiedBeliefState, scaledState);
+		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
 
-		intVec secondE(beliefState);
-		secondE.erase(secondE.begin() + 1);
+		// calculate reward with second enemy
+		modifiedBeliefState = beliefState;
+		modifiedBeliefState.erase(modifiedBeliefState.begin() + 1);
 
-		intVec scaledStateE2(secondE.size());
-		ScaleState(secondE, scaledStateE2);
-		lut_t::iterator itrE2 = s_LUT.find(nxnGridState::StateToIdx(scaledStateE2, s_lutGridSize));
+		scaledState.resize(modifiedBeliefState.size());
+		ScaleState(modifiedBeliefState, scaledState);
+		itr2 = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
 
-		if (itrE2 != s_LUT.end())
-			action = FindMaxReward(itrE1->second, itrE2->second, expectedReward);
-	}
-	else if (s_calculationType == WO_NINV_STUPID)
-	{
+		if (itr != s_LUT.end() & itr2 != s_LUT.end())
+			Combine2EnemiesRewards(beliefState, itr->second, itr2->second, expectedReward);
+		else
+			expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
+	
+	case WO_NINV_STUPID:
 		beliefState.erase(beliefState.begin() + 1 + m_enemyVec.size());
-		intVec scaledState(beliefState.size());
+		scaledState.resize(beliefState.size());
 		ScaleState(beliefState, scaledState);
 		itr = s_LUT.find(nxnGridState::StateToIdx(scaledState, s_lutGridSize));
+		
+		// TODO : move members 1 slot right
 		if (itr != s_LUT.end())
-			action = FindMaxReward(itr->second, expectedReward);
-		return (action + 1) % NumActions();
-
+			expectedReward = itr->second;
+		else
+			expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
+	default: // calc type = WITHOUT
+		expectedReward = doubleVec(NumActions(), REWARD_LOSS);
+		break;
 	}
-	else // calc type = WITHOUT
+}
+
+int nxnGrid::FindMaxReward(const doubleVec & rewards, double & expectedReward)
+{
+	int maxAction = -1;
+	double maxReward = REWARD_LOSS - 1;
+
+	for (int a = 0; a < rewards.size(); ++a)
 	{
-		expectedReward = REWARD_LOSS;
-		return rand() % NumActions();
+		if (rewards[a] > maxReward)
+		{
+			maxAction = a;
+			maxReward = rewards[a];
+		}
 	}
 
-	return action;
+	expectedReward = maxReward;
+	return maxAction;
 }
 
 void nxnGrid::CreateParticleVecRec(intVec & state, std::vector<std::vector<std::pair<int, double> > > & objLocations, std::vector<State*> & particles, double weight, int currIdx) const
@@ -837,41 +861,42 @@ void nxnGrid::ScaleState(const intVec & beliefState, intVec & scaledState, int n
 	MoveNonProtectedShelters(beliefState, scaledState, newGridSize);
 }
 
-int nxnGrid::FindMaxReward(const doubleVec & rewards1E, const doubleVec & rewards2E, double & maxReward)
+void nxnGrid::Combine2EnemiesRewards(const intVec & beliefState, const doubleVec & rewards1E, const doubleVec & rewards2E, doubleVec & rewards) const
 {
-	doubleVec rewards;
-	// for non enemy related action do average
+	static int bitE1 = 1;
+	static int bitE2 = 2;
+	int deadEnemies = 0;
+
+	rewards.resize(NumActions());
+	// insert first enemy related actions rewards (if dead insert reward loss)
+	if (beliefState[1] != m_gridSize * m_gridSize)
+		for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+			rewards[a] = rewards1E[a];
+	else
+	{
+		deadEnemies |= bitE1;
+		for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+			rewards[a] = REWARD_LOSS;
+	}
+	// insert second enemy related actions rewards (if dead insert reward loss)
+	if (beliefState[2] != m_gridSize * m_gridSize)
+		for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+			rewards[a + s_numEnemyRelatedActions] = rewards2E[a];
+	else
+	{
+		deadEnemies |= bitE2;
+		for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
+			rewards[a + s_numEnemyRelatedActions] = REWARD_LOSS;
+	}
+
+	// for non enemy related action do average of rewards
 	for (int a = 0; a < s_numBasicActions; ++a)
 	{
-		double sum = rewards1E[a] + rewards2E[a];
-		rewards.emplace_back(sum / 2);
+		// when only 1 enemy is dead insert to rewards calculation only reward of the live enemy
+		double rE1 = rewards1E[a] * (deadEnemies != bitE1) + rewards2E[a] * (deadEnemies == bitE1);
+		double rE2 = rewards2E[a] * (deadEnemies != bitE2) + rewards1E[a] * (deadEnemies == bitE2);
+		rewards[a] = (rE1 + rE2) / 2;
 	}
-
-	// insert enemy related actions
-	for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
-		rewards.emplace_back(rewards1E[a]);
-
-	for (int a = s_numBasicActions; a < s_numBasicActions + s_numEnemyRelatedActions; ++a)
-		rewards.emplace_back(rewards2E[a]);
-
-	return FindMaxReward(rewards, maxReward);
-}
-
-int nxnGrid::FindMaxReward(const doubleVec & rewards, double & maxReward)
-{
-	double max = REWARD_LOSS - 1;
-	int idxMax = -1;
-	for (int i = 0; i < rewards.size(); ++i)
-	{
-		if (rewards[i] > max)
-		{
-			max = rewards[i];
-			idxMax = i;
-		}
-	}
-
-	maxReward = max;
-	return idxMax;
 }
 
 
@@ -1231,32 +1256,33 @@ int nxnGrid::FindObject(intVec & state, intVec & identity, int object, int obser
 	return m_gridSize * m_gridSize;
 }
 
-int nxnGrid::ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double & expectedReward)
+void nxnGrid::ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, doubleVec & expectedRewards)
 {
 	const nxnGrid * model = static_cast<const nxnGrid *>(m);
-	int action = 0;
-	expectedReward = -100;
-
 	if (prior->history().Size() > 0)
 	{
 		intVec beliefState;
 		model->InitBeliefState(beliefState, prior->history());
-		return model->ChoosePreferredActionIMP(beliefState, expectedReward);
+		model->ChoosePreferredActionIMP(beliefState, expectedRewards);
 	}
-
-	return action;
+	else
+	{
+		expectedRewards = doubleVec(model->NumActions(), REWARD_LOSS);
+	}
 }
 
-int nxnGrid::ChoosePreferredAction(const State * state, const DSPOMDP* m, double & expectedReward)
-{
-	intVec beliefState;
-	nxnGridState::IdxToState(state, beliefState);
-	const nxnGrid * model = static_cast<const nxnGrid *>(m);
-
-	// add shelters to state
-	model->AddSheltersLocations(beliefState);
-
-	return model->ChoosePreferredActionIMP(beliefState, expectedReward);
+int nxnGrid::ChoosePreferredAction(POMCPPrior * prior, const DSPOMDP* m, double expectedReward)
+{	
+	doubleVec rewards;
+	ChoosePreferredAction(prior, m, rewards);
+	// if calc type != without return lut result else return random decision
+	if (s_calculationType != WITHOUT)
+		return FindMaxReward(rewards, expectedReward);
+	else
+	{
+		expectedReward = REWARD_LOSS;
+		return rand() % m->NumActions();
+	}
 }
 
 void nxnGrid::InitBeliefState(intVec & beliefState,const History & h) const

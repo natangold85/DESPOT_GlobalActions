@@ -170,7 +170,10 @@ bool Evaluator::RunStep(int step, int round) {
 	if (nxnGrid::GetModelType() == nxnGrid::ONLINE)
 		action = solver_->Search().action;
 	else
-		action = static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, offlineReward);
+	{
+		std::vector<double> rewards;
+		static_cast<nxnGrid *>(model_)->ChoosePreferredAction(static_cast<POMCP *>(solver_)->GetPrior(), model_, rewards);
+	}
 	double endSearch = get_time_second();
 	
 	

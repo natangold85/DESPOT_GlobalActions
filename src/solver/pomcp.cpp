@@ -270,13 +270,9 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 	int large_count = 1000000;
 	double neg_infty = -1e10;
 	
-	int dfltAction = 0;
-	double dfltValue = -100.0;
-	// on root node choose prefferred action according to prior else choose prefferred action according to state
-	//if (depth == 0)
-	dfltAction = nxnGrid::ChoosePreferredAction(prior, model, dfltValue); // NATAN CHANGES SOLVER
-	//else
-	//	dfltAction = nxnGrid::ChoosePreferredAction(state, model, dfltValue);
+	std::vector<double> rewardsVec;
+	nxnGrid::ChoosePreferredAction(prior, model, rewardsVec);
+
 
 	if (legal_actions.size() == 0) { // no prior knowledge, all actions are equal
 
@@ -284,15 +280,10 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 		{
 			QNode* qnode = new QNode(vnode, action);
 			qnode->count(0);
-			qnode->value(-100.0); 
+			qnode->value(rewardsVec[action]);
 			
 			vnode->children().push_back(qnode);
 		}
-
-		ValuedAction vAction(dfltAction, dfltValue); // NATAN CHANGES SOLVER
-		vnode->default_move(vAction);
-		vnode->children()[dfltAction]->value(dfltValue);
-
 	} else {
 		for (int action = 0; action < model->NumActions(); action++) {
 			QNode* qnode = new QNode(vnode, action);
